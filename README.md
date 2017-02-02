@@ -8,3 +8,5 @@ This Zoom Player plugin uses the YouTube data API to:<br>
 <li>Download meta-data on videos based on popular videos in a specific geographic region and video category.
 <li>Download meta-data on videos based on a search query.
 </ol>
+<BR><BR>
+PLUGIN_DEFINES.INC includes the compiler directives to switch between the multiple Plugin modes (Channel/Search/Trending/etc...)
