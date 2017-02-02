@@ -41,10 +41,12 @@ uses
   StrUtils,
   TNTClasses,
   TNTSysUtils,
+  TNTSystem,
   SuperObject,
   WinInet,
-  misc_utils_unit;
-
+  misc_utils_unit,
+  ISO_3166_1_alpha_2_unit,
+  youtube_api;
 
 {$R *.res}
 
@@ -93,9 +95,8 @@ Type
 
 
 Const
-  // Settings Registry Path and Key
-  PluginRegKey               : String = 'Software\VirtuaMedia\ZoomPlayer\MediaLibraryPlugins\YouTube Channel';
-  {$I APIKEY.INC}
+  // Settings Registry Path and API Key
+  //PluginRegKey               : String = 'Software\VirtuaMedia\ZoomPlayer\MediaLibraryPlugins\YouTube Channel';
 
   // Category flags
   catFlagThumbView           : Integer =    1;     // Enable thumb view (disabled = list view)
@@ -113,13 +114,16 @@ Const
   catFlag1stMediaFolderThumb : Integer = 4096;     // Instead of scraping for a folder's name, always use the first media file within the folder instead
   catFlagCropCatThumbnail    : Integer = 8192;     // Crop category thumbnails to fit in display area (otherwise pad thumbnails)
 
-  srName                                  = 0;
-  srExt                                   = 1;
-  srDate                                  = 2;
-  srSize                                  = 3;
-  srPath                                  = 4;
-  srDuration                              = 5;
-  srRandom                                = 6;
+  srName                               = 0;
+  srExt                                = 1;
+  srDate                               = 2;
+  srSize                               = 3;
+  srPath                               = 4;
+  srDuration                           = 5;
+  srRandom                             = 6;
+
+  strWorldWide               : String  = 'Worldwide';
+  strEverything              : String  = 'Everything';
 
 
 // Called by Zoom Player to free any resources allocated in the DLL prior to unloading the DLL.
@@ -178,20 +182,15 @@ var
   sChannelID  : String;
   sTitle      : String;
   sThumbnail  : String;
+  sCatID      : String;
   sUserName   : WideString;
   sPos        : Integer;
   ePos        : Integer;
   I,I1        : Integer;
   sList       : TStringList;
-  dlStatus    : String;
-  dlError     : Integer;
-  jBase       : ISuperObject;
-  jItems      : ISuperObject;
-  jEntry      : ISuperObject;
-  jSnippet    : ISuperObject;
-  sJSON       : String;
-  jThumbRez   : ISuperObject;
-  jThumb      : ISuperObject;
+  uList       : TTNTStringList;
+  uStr        : WideString;
+
 begin
   // CategoryInput = URL
   // CategoryID    = Parsed category ID returned to the player for later calls to GetList.
@@ -221,6 +220,62 @@ begin
   CategoryData^.SortMode      := srDate;
   CategoryData^.DefaultFlags  := catFlagThumbView or catFlagThumbCrop or catFlagTitleFromMetaData;
 
+  {$IFDEF SEARCHMODE}
+  // **********************************************************************************
+  // ********************************* YouTube Search *********************************
+  // **********************************************************************************
+  CategoryData^.CategoryID    := PChar(sCatInput);
+  CategoryData^.CategoryTitle := PChar('Search:'+sCatInput);
+  Result := S_OK;
+  {$ELSE}
+
+  {$IFDEF TRENDINGMODE}
+  // **********************************************************************************
+  // ********************************* YouTube Trends *********************************
+  // **********************************************************************************
+  If sCatInput = strWorldWide then
+  Begin
+    sCatID := strWorldWide;
+  End
+    else
+  // Convert language name to ISO 3166-1 alpha-2 code
+  For I := 0 to ISO_3166_1_alpha_2_Count-1 do If sCatInput = ISO_3166_1_alpha_2_str[I] then
+  Begin
+    sCatID := ISO_3166_1_alpha_2[I];
+    Break;
+  End;
+  uList := TTNTStringList.Create;
+
+  If sCatID <> strWorldWide then
+  Begin
+    // YouTube category lists only work per-country, it doesn't work globally
+    YouTube_GetCategoryIDs(sCatID,uList);
+  End;
+
+  uStr := '';
+  uList.InsertObject(0,strEverything,TObject(-1));
+  If InputComboW(CenterOnWindow,'Category :', '', uList,uStr) = True then
+  Begin
+    For I := 0 to uList.Count-1 do If uStr = uList[I] then
+    Begin
+      sCatID := sCatID+','+IntToStr(Integer(uList.Objects[I]));
+      CategoryData^.CategoryTitle := PChar(UTF8Encode(EncodeTextTags('Trending: '+uList[I]+' in '+sCatInput,True)));
+      Break;
+    End;
+    CategoryData^.CategoryID    := PChar(sCatID);
+    Result := S_OK;
+  End
+  Else Result := S_FALSE; // prevents an error dialog, used for "cancel".
+
+  uList.Free;
+
+  // Get list of automatically generated video categories
+  // https://www.googleapis.com/youtube/v3/videoCategories?part=snippet&regionCode=IL&key=API_KEY
+  {$ELSE}
+
+  // ***********************************************************************************
+  // ********************************* YouTube Channel *********************************
+  // ***********************************************************************************
   If sCatInput <> '' then
   Begin
     // Try to find the Channel ID by input URL
@@ -245,50 +300,7 @@ begin
           sUserName := Copy(sCatInput,sPos+6,Length(sCatInput)-(sPos+5));
 
         {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'User Name: '+sUserName);{$ENDIF}
-
-        If sUserName <> '' then
-        Begin
-          sList    := TStringList.Create;
-          dlStatus := '';
-          dlError  := 0;
-          If DownloadFileToStringList('https://www.googleapis.com/youtube/v3/channels?key='+APIKEY+'&forUsername='+sUserName+'&part=id',sList,dlStatus,dlError,2000) = True then
-          Begin
-            If sList.Count > 0 then
-            Begin
-              sJSON := StringReplace(sList.Text,CRLF,'',[rfReplaceAll]);
-              {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'JSON User Name : '+CRLF+'---'+CRLF+sList.Text+CRLF+'---'+CRLF);{$ENDIF}
-              jBase := SO(sJSON);
-              If jBase <> nil then
-              Begin
-                jItems := jBase.O['items'];
-                If jItems <> nil then
-                Begin
-                  If jItems.AsArray.Length > 0 then
-                  Begin
-                    jEntry := jItems.AsArray.O[0];
-                    If jEntry <> nil then
-                    Begin
-                      sChannelID := jEntry.S['id'];
-                      jEntry.Clear(True);
-                      jEntry := nil;
-                    End
-                    {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON entry object returned nil'){$ENDIF};
-                  End;
-                  jItems.Clear(True);
-                  jItems := nil;
-                  //ShowMessageW(jItems.AsString);
-                End
-                {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON items object returned nil'){$ENDIF};
-                jBase.Clear(True);
-                jBase := nil;
-              End
-              {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON base object returned nil'){$ENDIF};
-            End
-            {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download returned no data on User Name to Channel ID translation'){$ENDIF};
-          End
-          {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download error on User Name to Channel ID translation'){$ENDIF};
-          sList.Free;
-        End;
+        If sUserName <> '' then sChannelID := YouTube_ConvertUserNameToChannelID(sUserName);
       End;
     End;
 
@@ -297,62 +309,19 @@ begin
       {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel ID: '+sChannelID);{$ENDIF}
       CategoryData^.CategoryID := PChar(sChannelID);
 
-      // Get Channel name
-      sList := TStringList.Create;
-      If DownloadFileToStringList('https://www.googleapis.com/youtube/v3/channels?key='+APIKEY+'&part=snippet&id='+sChannelID,sList,dlStatus,dlError,2000) = True then
+      // Get Channel Title and Thumbnail
+      YouTube_GetChannelNameAndThumbnail(sChannelID,sTitle,sThumbnail);
+
+      If sTitle <> '' then
       Begin
-        If sList.Count > 0 then
-        Begin
-          sJSON := StringReplace(sList.Text,CRLF,'',[rfReplaceAll]);
-          {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'JSON Channel Snippet : '+CRLF+'---'+CRLF+sList.Text+CRLF+'---'+CRLF);{$ENDIF}
-          jBase := SO(sJSON);
-          If jBase <> nil then
-          Begin
-            jItems := jBase.O['items'];
-            If jItems <> nil then
-            Begin
-              If jItems.AsArray.Length > 0 then
-              Begin
-                jEntry := jItems.AsArray.O[0];
-                If jEntry <> nil then
-                Begin
-                  jSnippet := jEntry.O['snippet'];
-                  If jSnippet <> nil then
-                  Begin
-                    sTitle := EncodeTextTags(jSnippet.S['title'],True);
-                    CategoryData^.CategoryTitle := PChar(sTitle);
-                    {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel Title: '+UTF8Decode(sTitle));{$ENDIF}
-
-                    sThumbnail := GetBestThumbnailURL(jSnippet);
-                    If sThumbnail <> '' then CategoryData^.CategoryThumb := PChar(sThumbnail);
-                    {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel Thumbnail: '+UTF8Decode(sThumbnail));{$ENDIF}
-                    If sTitle <> '' then Result := S_OK;
-                    jSnippet.Clear(True);
-                    jSnippet := nil;
-                  End
-                  {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON snippet object returned nil'){$ENDIF};
-                  jEntry.Clear(True);
-                  jEntry := nil;
-                End
-                {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON entry object returned nil'){$ENDIF};
-              End;
-              jItems.Clear(True);
-              jItems := nil;
-            End
-            {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON items object returned nil'){$ENDIF};
-            jBase.Clear(True);
-            jBase := nil;
-          End
-          {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON base object returned nil'){$ENDIF};
-        End
-        {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download returned no data on User Name to Channel ID translation'){$ENDIF};
-      End
-      {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download error on Channel ID to Channel Name translation'){$ENDIF};
-
-      sList.Free;
+        CategoryData^.CategoryTitle := PChar(sTitle);
+        If sThumbnail <> '' then CategoryData^.CategoryThumb := PChar(sThumbnail);
+        Result := S_OK;
+      End;
     End
     {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'No Channel ID detected'){$ENDIF};
   End;
+  {$ENDIF}{$ENDIF}
 
   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'CreateCategory, Result : '+IntToHex(Result,8)+' (after)');{$ENDIF}
 end;
@@ -379,7 +348,7 @@ const
   YouTube_VideoFetch : Integer = 25;
 
 var
-  S           : String;
+  S,S1        : String;
   sID         : String;
   I,I1        : Integer;
   sList       : TStringList;
@@ -392,9 +361,14 @@ var
   sJSON       : String;
   sURL        : String;
   sToken      : String;
-  sItemList   : String;
+  sItemList   : WideString;
+  sIDList     : String;
   ytvList     : TList;
   ytvEntry    : PYouTubeVideoRecord;
+  {$IFDEF TRENDINGMODE}
+  iCatType    : Integer;
+  sCatRegion  : String;
+  {$ENDIF}
 
   procedure WipeYTVentry(Entry : PYouTubeVideoRecord);
   begin
@@ -424,7 +398,7 @@ var
     End;
     If Entry^.ytvPublished > 0 then sDate := TimeDifferenceToStr(Now,Entry^.ytvPublished) else sDate := '';
 
-    sMetaLikes := 'Likes :\n'+IntToStr(Entry^.ytvLikeCount)+'\n\nDislikes :\n'+IntToStr(Entry^.ytvDislikeCount);
+    sMetaLikes := 'Likes :\n'+IntToStrDelimiter(Entry^.ytvLikeCount,',')+'\n\nDislikes :\n'+IntToStrDelimiter(Entry^.ytvDislikeCount,',');
 
     sDuration := EncodeDuration(Entry^.ytvDuration);
 
@@ -447,11 +421,13 @@ var
               '"Description=' +EncodeTextTags(Entry^.ytvDescription,True)+'",'+
               '"Thumbnail='   +Entry^.ytvThumbnail+'",'+
               '"Duration='    +FloatToStr(Entry^.ytvDuration)+'",'+
+              // user login not implemented, no way to pass the last play position
+              //'"Position='    +FloatToStr(Entry^.ytvPosition)+'",'+
               '"Date='        +FloatToStr(Entry^.ytvPublished)+'",'+
               '"MetaEntry1='  +EncodeTextTags(Entry^.ytvTitle,True)+'",'+
               '"MetaEntry2='  +sDate+'",'+
               '"MetaEntry3='  +sDuration+'",'+
-              '"MetaEntry4='  +IntToStr(Entry^.ytvViewCount)+' views",'+
+              '"MetaEntry4='  +IntToStrDelimiter(Entry^.ytvViewCount,',')+' views",'+
               '"MetaEntry5='  +EncodeTextTags(Entry^.ytvDescription,True)+'",'+
               '"MetaEntry6='  +sMetaLikes+'",'+
               '"MetaRating='  +IntToStr(iMetaRating)+'"';
@@ -472,11 +448,40 @@ begin
   Result             := E_FAIL;
   ItemList^.catItems := '';
 
-  //https://www.googleapis.com/youtube/v3/search?key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&channelId=UClFSU9_bUb4Rc6OYfTt5SPw&part=snippet,id&order=date&maxResults=3
 
   sList   := TStringList.Create;
   ytvList := TList.Create;
-  sURL    := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&channelId='+CategoryID+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetch);
+  {$IFDEF SEARCHMODE}
+  //https://www.googleapis.com/youtube/v3/search?part=snippet,id&q=[Search]&type=video&key={YOUR_API_KEY}
+  sURL    := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&q='+URLEncodeUTF8(UTF8Decode(CategoryID))+'&part=snippet,id&order=relevance&type=video&maxResults='+IntToStr(YouTube_VideoFetch);
+  {$ELSE}
+    {$IFDEF TRENDINGMODE}
+    S := CategoryID;
+    I := Pos(',',S);
+    If I > 0 then
+    Begin
+      iCatType   := StrToIntDef(Copy(S,I+1,Length(S)-I),-1);
+      sCatRegion := Copy(S,1,I-1);
+    End
+      else
+    Begin
+      iCatType   := -1;
+      sCatRegion := S;
+    End;
+
+    // Trending in country with specific category
+    //https://www.googleapis.com/youtube/v3/videos?part=contentDetails&chart=mostPopular&videoCategoryId=10&maxResults=25&key=API_KEY
+
+    // Trending in country
+    //https://www.googleapis.com/youtube/v3/videos?part=contentDetails&chart=mostPopular&regionCode=IN&maxResults=25&key=API_KEY
+    If sCatRegion <> strWorldwide then S := '&regionCode='+sCatRegion else S := '';
+    If iCatType > -1 then S := S+'&videoCategoryId='+IntToStr(iCatType);
+    sURL    := 'https://www.googleapis.com/youtube/v3/videos?part=snippet,id&chart=mostPopular'+S+'&maxResults='+IntToStr(YouTube_VideoFetch)+'&key='+APIKey;
+    {$ELSE}
+    //https://www.googleapis.com/youtube/v3/search?key=[key]&channelId=UClFSU9_bUb4Rc6OYfTt5SPw&part=snippet,id&order=date&maxResults=3
+    sURL    := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&channelId='+CategoryID+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetch);
+    {$ENDIF}
+  {$ENDIF}
   sToken  := CategoryPath;
   If sToken <> '' then sURL := sURL+'&pageToken='+sToken;
   sToken  := '';
@@ -503,20 +508,18 @@ begin
           jEntry := jItems.AsArray.O[I];
           If jEntry <> nil then
           Begin
+            {$IFDEF TRENDINGMODE}
+            ytvEntry^.ytvPath := jEntry.S['id'];
+            {$ELSE}
             jSnippet := jEntry.O['id'];
             If jSnippet <> nil then
             Begin
               ytvEntry^.ytvPath := jSnippet.S['videoId'];
-
-              {If ytvEntry^.ytvPath = 'Y6tzhAg0fQQ' then //     "title": "100 OnePlus 3T Giveaway! +¦++GÇÖ-»",
-              Begin
-                I1 := 0;
-              End;}
-
               jSnippet.Clear(True);
               jSnippet := nil;
             End
             {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON id object returned nil'){$ENDIF};
+            {$ENDIF}
 
             jSnippet := jEntry.O['snippet'];
             If jSnippet <> nil then
@@ -625,15 +628,14 @@ begin
   Begin
     // Get a list of video IDs
     sList.Clear;
-    sItemList := '';
     For I := 0 to ytvList.Count-1 do
     Begin
       If I = 0 then
-        sItemList := PYouTubeVideoRecord(ytvList[I])^.ytvPath else
-        sItemList := sItemList+','+PYouTubeVideoRecord(ytvList[I])^.ytvPath;
+        sIDList := PYouTubeVideoRecord(ytvList[I])^.ytvPath else
+        sIDList := sIDList+','+PYouTubeVideoRecord(ytvList[I])^.ytvPath;
     End;
 
-    sURL := 'https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id='+sItemList+'&key='+APIKey;
+    sURL := 'https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id='+sIDList+'&key='+APIKey;
     {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Video ID Search URL : '+sURL);{$ENDIF}
     If DownloadFileToStringList(sURL,sList,dlStatus,dlError,2000) = True then
     Begin
@@ -755,8 +757,30 @@ end;
 
 // The string to display for the users when asking for input, in our case, a youtube channel URL
 function GetInputID : PChar; stdcall;
+var
+  I     : Integer;
+  sList : TStringList;
+  S     : String;
+
 begin
-  Result := 'Enter YouTube channel URL :';
+  {$IFDEF SEARCHMODE}
+  Result := 'YouTube Search :';
+  {$ELSE}
+    {$IFDEF TRENDINGMODE}
+    S := 'Trending in :';
+
+    // Provide country options
+    sList := TStringList.Create;
+    For I := 0 to ISO_3166_1_alpha_2_Count-1 do sList.Add(ISO_3166_1_alpha_2_str[I]);
+    sList.Sort;
+    sList.Insert(0,strWorldWide);
+    For I := 0 to sList.Count-1 do S := S+'|'+sList[I];
+    sList.Free;
+    Result := PChar(S);
+    {$ELSE}
+    Result := 'Enter YouTube channel URL :';
+    {$ENDIF}
+  {$ENDIF}
 end;
 
 
@@ -779,6 +803,7 @@ end;
 }
 
 
+
 exports
    InitPlugin,
    FreePlugin,
@@ -792,47 +817,4 @@ exports
 
 begin
 end.
-
-
-// https://www.googleapis.com/youtube/v3/videos?id=dw7K4oMQZcU&key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&fields=items%28id,snippet%28channelId,title,categoryId%29,statistics%29&part=snippet,statistics
-
-// https://www.googleapis.com/youtube/v3/
-
-
-// Get channel ID by username
-//                                                   [ CHANNEL ID           ]     [ API KEY                             ]
-// https://www.googleapis.com/youtube/v3/channels?id=UC1yBKRuGpC1tSM73A0ZjYjQ&key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&part=contentDetails
-
-
-// https://www.googleapis.com/youtube/v3/channels?part=contentDetails&forUsername=UC1yBKRuGpC1tSM73A0ZjYjQ&key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo
-//
-// result:
-// {
-//  "kind": "youtube#channelListResponse",
-//  "etag": "\"5C5HHOaBSHC5ZXfkrT4ZlRCi01A/7bfDushoFIxrk51TE25bcHAjytw\"",
-//  "pageInfo": {
-//   "totalResults": 1,
-//   "resultsPerPage": 5
-//  },
-//  "items": [
-//   {
-//    "kind": "youtube#channel",
-//    "etag": "\"5C5HHOaBSHC5ZXfkrT4ZlRCi01A/EoFLsZS4VGCiU6pUkUSqSg2NS0Y\"",
-//    "id": "UCVXd2_qKL7m3rbu8Txv6fPQ",
-//    "contentDetails": {
-//     "relatedPlaylists": {
-//      "uploads": "UUVXd2_qKL7m3rbu8Txv6fPQ",
-//      "watchHistory": "HL",
-//      "watchLater": "WL"
-//     }
-//    }
-//   }
-//  ]
-// }
-
-
-// Get playlist of all videos for a channel (using playlistId)
-// https://www.googleapis.com/youtube/v3/playlistItems?part=snippet%2CcontentDetails&maxResults=50&playlistId=UU1yBKRuGpC1tSM73A0ZjYjQ&key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo
-
-// In the result, the "nextPageToken" can be used with the "&pageToken=" parameter to get the next page.
 

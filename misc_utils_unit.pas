@@ -59,12 +59,18 @@ function  YouTubeISO8601toSeconds(sISO : String) : Integer;
 function  EncodeDuration(Dur : Integer) : WideString;
 function  TimeDifferenceToStr(nowTS,thenTS : TDateTime) : String;
 function  UTF8StringToWideString(Const S : UTF8String) : WideString;
+function  IntToStrDelimiter(iSrc : Int64; dChar : Char) : String;
+function  DosToAnsi(S: String): String;
+
+{$IFDEF TRENDINGMODE}
+function InputComboW(ownerWindow: THandle; const ACaption, APrompt: Widestring; const AList: TTNTStrings; var AOutput : WideString) : Boolean;
+{$ENDIF}
 
 
 implementation
 
 uses
-  SysUtils, SyncObjs, TNTSysUtils, wininet, dateutils;
+  SysUtils, SyncObjs, TNTSysUtils, wininet, dateutils, graphics {$IFDEF TRENDINGMODE},forms , tntforms, stdctrls, tntStdCtrls, controls{$ENDIF};
 
 
 const
@@ -725,6 +731,124 @@ begin
   If iLen > 0 then SetLength(sw,iLen-1);
   Result := sw;
 end;
+
+
+function IntToStrDelimiter(iSrc : Int64; dChar : Char) : String;
+var
+  I : Integer;
+  S : String;
+begin
+  S      := IntToStr(iSrc);
+  Result := S;
+  I      := Length(S)-2;
+  While I > 1 do
+  Begin
+    Insert(dChar,Result,I);
+    Dec(I,3);
+  End;
+end;
+
+
+function DosToAnsi(S: String): String;
+begin
+  SetLength(Result, Length(S));
+  OEMToCharBuff(PChar(S), PChar(Result), Length(S));
+end;
+
+
+{$IFDEF TRENDINGMODE}
+function InputComboW(ownerWindow: THandle; const ACaption, APrompt: Widestring; const AList: TTNTStrings; var AOutput : WideString) : Boolean;
+
+  function GetCharSize(Canvas: TCanvas): TPoint;
+  var
+    I: Integer;
+    Buffer: array[0..51] of Char;
+  begin
+    for I := 0 to 25 do Buffer[I] := Chr(I + Ord('A'));
+    for I := 0 to 25 do Buffer[I + 26] := Chr(I + Ord('a'));
+    GetTextExtentPoint(Canvas.Handle, Buffer, 52, TSize(Result));
+    Result.X := Result.X div 52;
+  end;  
+  
+var
+  Form         : TTNTForm;
+  Prompt       : TTNTLabel;
+  Combo        : TTNTComboBox;
+  DialogUnits  : TPoint;
+  ButtonTop,
+  ButtonWidth,
+  ButtonHeight : Integer;
+  CenterOnRect : TRect;
+begin
+  AOutput := '';
+  Result  := False;
+  Form    := TTNTForm.Create(nil);
+  with Form do
+    try
+      Canvas.Font := Font;
+      DialogUnits := GetCharSize(Canvas);
+      BorderStyle := bsDialog;
+      Caption     := ACaption;
+      ClientWidth := MulDiv(180, DialogUnits.X, 4);
+      Prompt      := TTNTLabel.Create(Form);
+      with Prompt do
+      begin
+        Parent   := Form;
+        Caption  := APrompt;
+        Left     := MulDiv(8, DialogUnits.X, 4);
+        Top      := MulDiv(8, DialogUnits.Y, 8);
+        Constraints.MaxWidth := MulDiv(164, DialogUnits.X, 4);
+        WordWrap := True;
+      end;
+      Combo := TTNTComboBox.Create(Form);
+      with Combo do
+      begin
+        Parent     := Form;
+        Style      := csDropDownList;
+        Items.Assign(AList);
+        ItemIndex  := 0;
+        Left       := Prompt.Left;
+        Top        := Prompt.Top + Prompt.Height + 5;
+        Width      := MulDiv(164, DialogUnits.X, 4);
+      end;
+      ButtonTop    := Combo.Top + Combo.Height + 15;
+      ButtonWidth  := MulDiv(50, DialogUnits.X, 4);
+      ButtonHeight := MulDiv(14, DialogUnits.Y, 8);
+      with TTNTButton.Create(Form) do
+      begin
+        Parent      := Form;
+        Caption     := 'OK';
+        ModalResult := mrOk;
+        default     := True;
+        SetBounds(MulDiv(38, DialogUnits.X, 4), ButtonTop, ButtonWidth, ButtonHeight);
+      end;
+      with TTNTButton.Create(Form) do
+      begin
+        Parent      := Form;
+        Caption     := 'Cancel';
+        ModalResult := mrCancel;
+        Cancel      := True;
+        SetBounds(MulDiv(92, DialogUnits.X, 4), Combo.Top + Combo.Height + 15, ButtonWidth, ButtonHeight);
+        Form.ClientHeight := Top + Height + 13;
+      end;
+
+      If GetWindowRect(ownerWindow,CenterOnRect) = False then
+        GetWindowRect(0,CenterOnRect); // Can't find window, center on screen
+
+      SetBounds(CenterOnRect.Left+(((CenterOnRect.Right-CenterOnRect.Left)-Width) div 2),CenterOnRect.Top+(((CenterOnRect.Bottom-CenterOnRect.Top)-Height) div 2),Width,Height);
+
+      if ShowModal = mrOk then
+      begin
+        AOutput := Combo.Text;
+        Result  := True;
+      end;
+    finally
+      Form.Free;
+    end;
+end;
+{$ENDIF}
+
+
 
 
 
