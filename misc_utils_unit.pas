@@ -1,5 +1,3 @@
-{$I PLUGIN_DEFINES.INC}
-
 unit misc_utils_unit;
 
 
@@ -21,13 +19,8 @@ unit misc_utils_unit;
 interface
 
 uses
-  Windows, Classes, TNTClasses, SuperObject;
+  Windows, Classes, TNTClasses;
 
-
-{$IFDEF LOCALTRACE}
-Const
-  LogInit : String = 'c:\log\.YouYube_Channel_plugin.txt';
-{$ENDIF}
 
 function  TickCount64 : Int64;
 
@@ -42,6 +35,7 @@ function  DownloadImageToFile(URL : String; ImageFilePath, ImageFileName : WideS
 procedure DownloadImageToFileThreaded(URL : String; ImageFilePath, ImageFileName : WideString; var Status : String; var ErrorCode: Integer; TimeOut : DWord; var SuccessCode, DownloadEnded : Boolean);
 
 function  URLEncodeUTF8(stInput : widestring) : string;
+function  HTMLUnicodeToUTF8(const AStr: String): String; 
 
 function  SetRegDWord(BaseKey : HKey; SubKey : String; KeyEntry : String; KeyValue : Integer) : Boolean;
 function  GetRegDWord(BaseKey : HKey; SubKey : String; KeyEntry : String) : Integer;
@@ -54,23 +48,20 @@ function  EncodeTextTags(S : WideString; AddSuffix : Boolean) : WideString;
 
 procedure FileExtIntoStringList(fPath,fExt : WideString; fList : TTNTStrings; Recursive : Boolean);
 
-function  GetBestThumbnailURL(jSnippet : ISuperObject) : String;
-function  YouTubeISO8601toSeconds(sISO : String) : Integer;
 function  EncodeDuration(Dur : Integer) : WideString;
 function  TimeDifferenceToStr(nowTS,thenTS : TDateTime) : String;
 function  UTF8StringToWideString(Const S : UTF8String) : WideString;
+function  WideStringToUTF8String(Const S : WideString) : UTF8String;
 function  IntToStrDelimiter(iSrc : Int64; dChar : Char) : String;
 function  DosToAnsi(S: String): String;
 
-{$IFDEF TRENDINGMODE}
-function InputComboW(ownerWindow: THandle; const ACaption, APrompt: Widestring; const AList: TTNTStrings; var AOutput : WideString) : Boolean;
-{$ENDIF}
+function  InputComboW(ownerWindow: THandle; const ACaption, APrompt: Widestring; const AList: TTNTStrings; var AOutput : WideString) : Boolean;
 
 
 implementation
 
 uses
-  SysUtils, SyncObjs, TNTSysUtils, wininet, dateutils, graphics {$IFDEF TRENDINGMODE},forms , tntforms, stdctrls, tntStdCtrls, controls{$ENDIF};
+  SysUtils, SyncObjs, TNTSysUtils, wininet, dateutils, graphics ,forms, tntforms, stdctrls, tntStdCtrls, controls;
 
 
 const
@@ -556,72 +547,6 @@ begin
 end;
 
 
-function GetBestThumbnailURL(jSnippet : ISuperObject) : String;
-var
-  jThumb      : ISuperObject;
-  jThumbRez   : ISuperObject;
-begin
-  Result := '';
-
-  jThumbRez := jSnippet.O['thumbnails'];
-  If jThumbRez <> nil then
-  Begin
-    jThumb := jThumbRez.O['maxres'];
-    If jThumb = nil then jThumb := jThumbRez.O['standard'];
-    If jThumb = nil then jThumb := jThumbRez.O['high'];
-    If jThumb = nil then jThumb := jThumbRez.O['medium'];
-    If jThumb = nil then jThumb := jThumbRez.O['default'];
-
-    If jThumb <> nil then
-    Begin
-      Result := jThumb.S['url'];
-      jThumb.Clear(True);
-      jThumb := nil;
-    End
-    {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON thumb object returned nil'){$ENDIF};
-    jThumbRez.Clear(True);
-    jThumbRez := nil;
-  End
-  {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON thumb resolution object returned nil'){$ENDIF};
-end;
-
-
-function YouTubeISO8601toSeconds(sISO : String) : Integer;
-var
-  I     : Integer;
-  sLen  : Integer;
-  iHour : Integer;
-  iMin  : Integer;
-  iSec  : Integer;
-  S     : String;
-begin
-  iHour := 0;
-  iMin  := 0;
-  iSec  := 0;
-
-  S     := '';
-  sLen  := Length(sISO);
-
-  If sLen > 3 then
-  Begin
-    If Pos('PT',sISO) = 1 then
-    Begin
-      For I := 3 to sLen do
-      Begin
-        Case sISO[I] of
-          '0'..'9' : S := S+sISO[I];
-          'H'      : Begin iHour := StrToIntDef(S,0); S := ''; End;
-          'M'      : Begin iMin  := StrToIntDef(S,0); S := ''; End;
-          'S'      : Begin iSec  := StrToIntDef(S,0); S := ''; End;
-        End;
-      End;
-    End;
-  End;
-
-  Result := (iHour*3600)+(iMin*60)+iSec;
-end;
-
-
 function EncodeDuration(Dur : Integer) : WideString;
 var
   dHours   : Integer;
@@ -733,6 +658,20 @@ begin
 end;
 
 
+function WideStringToUTF8String(Const S : WideString) : UTF8String;
+var
+  iLen:Integer;
+  su  :UTF8String;
+begin
+  result := '';
+  if Length(s)=0 then Exit;
+  iLen :=WideCharToMultiByte(CP_UTF8,0,PWideChar(s),-1,nil,0,nil,nil);
+  SetLength(su,iLen);
+  WideCharToMultiByte(CP_UTF8,0,PWideChar(s),-1,PAnsiChar(su),iLen,nil,nil);
+  Result:=su;
+end;
+
+
 function IntToStrDelimiter(iSrc : Int64; dChar : Char) : String;
 var
   I : Integer;
@@ -756,7 +695,6 @@ begin
 end;
 
 
-{$IFDEF TRENDINGMODE}
 function InputComboW(ownerWindow: THandle; const ACaption, APrompt: Widestring; const AList: TTNTStrings; var AOutput : WideString) : Boolean;
 
   function GetCharSize(Canvas: TCanvas): TPoint;
@@ -846,9 +784,70 @@ begin
       Form.Free;
     end;
 end;
-{$ENDIF}
 
-
+// Based on : http://stackoverflow.com/questions/1657105/delphi-html-decode
+// With modifications to maintain UTF8Encoding while converting &#0000 type unicode characters
+function HTMLUnicodeToUTF8(const AStr: String): String;
+var
+  Sp, Cp, Tp : PChar;
+  S          : String;
+  I, Code    : Integer;
+  sWide      : WideString;
+begin
+  Result := '';
+  Sp := PChar(AStr);
+  Cp := Sp;
+  try
+    while Sp^ <> #0 do
+    begin
+      case Sp^ of
+        '&': begin
+               Cp := Sp;
+               Inc(Sp);
+               case Sp^ of
+                 'a': if AnsiStrPos(Sp, 'amp;') = Sp then  { do not localize }
+                      begin
+                        Inc(Sp,3);
+                        Result := Result+'&';
+                      end;
+                 'l',
+                 'g': if (AnsiStrPos(Sp, 'lt;') = Sp) or (AnsiStrPos(Sp, 'gt;') = Sp) then { do not localize }
+                      begin
+                        Cp := Sp;
+                        Inc(Sp, 2);
+                        while (Sp^ <> ';') and (Sp^ <> #0) do Inc(Sp);
+                        if Cp^ = 'l' then Result := Result+'<' else Result := Result+'>';
+                      end;
+                 'q': if AnsiStrPos(Sp, 'quot;') = Sp then  { do not localize }
+                      begin
+                        Inc(Sp,4);
+                        Result := Result+'"';
+                      end;
+                 '#': begin
+                        Tp := Sp;
+                        Inc(Tp);
+                        while (Sp^ <> ';') and (Sp^ <> #0) do Inc(Sp);
+                        SetString(S, Tp, Sp - Tp);
+                        Val(S, I, Code);
+                        sWide := WideChar(I);
+                        Result := Result+UTF8Encode(sWide);
+                      end;
+                 else
+                   begin
+                     Result := '';
+                     Exit;
+                   end;
+               end;
+           end
+      else ;
+        Result := Result+Sp^;
+      end;
+      Inc(Sp);
+    end;
+  except
+    Result := '';
+  end;
+end;
 
 
 

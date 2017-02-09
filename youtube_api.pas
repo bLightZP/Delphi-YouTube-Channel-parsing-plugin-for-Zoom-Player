@@ -1,24 +1,29 @@
-{$I PLUGIN_DEFINES.INC}
+{$I YOUTUBE_PLUGIN_DEFINES.INC}
 
 unit youtube_api;
 
 interface
 
-uses tntclasses;
+uses tntclasses, superobject;
 
 const
   {$I APIKEY.INC}
+  {$IFDEF LOCALTRACE}
+  LogInit : String = 'c:\log\.YouYube_Channel_plugin.txt';
+  {$ENDIF}
 
 function  YouTube_ConvertUserNameToChannelID(sUserName : String) : String;
 procedure YouTube_GetChannelNameAndThumbnail(sChannelID : String; var sTitle,sThumbnail : String);
 procedure YouTube_GetCategoryIDs(regionCode : String; uList : TTNTStringList);
+function  YouTube_GetBestThumbnailURL(jSnippet : ISuperObject) : String;
+function  YouTube_ISO8601toSeconds(sISO : String) : Integer;
 
 
 
 implementation
 
 
-uses classes, WinInet, superobject, misc_utils_unit, sysutils, TNTSysUtils;
+uses classes, WinInet, misc_utils_unit, sysutils, TNTSysUtils;
 
 
 function YouTube_ConvertUserNameToChannelID(sUserName : String) : String;
@@ -113,7 +118,7 @@ begin
                 sTitle := EncodeTextTags(jSnippet.S['title'],True);
                 {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel Title: '+UTF8Decode(sTitle));{$ENDIF}
 
-                sThumbnail := GetBestThumbnailURL(jSnippet);
+                sThumbnail := YouTube_GetBestThumbnailURL(jSnippet);
                 {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel Thumbnail: '+UTF8Decode(sThumbnail));{$ENDIF}
                 jSnippet.Clear(True);
                 jSnippet := nil;
@@ -208,6 +213,72 @@ begin
   sList.Free;
 
 
+end;
+
+
+function YouTube_GetBestThumbnailURL(jSnippet : ISuperObject) : String;
+var
+  jThumb      : ISuperObject;
+  jThumbRez   : ISuperObject;
+begin
+  Result := '';
+
+  jThumbRez := jSnippet.O['thumbnails'];
+  If jThumbRez <> nil then
+  Begin
+    jThumb := jThumbRez.O['maxres'];
+    If jThumb = nil then jThumb := jThumbRez.O['standard'];
+    If jThumb = nil then jThumb := jThumbRez.O['high'];
+    If jThumb = nil then jThumb := jThumbRez.O['medium'];
+    If jThumb = nil then jThumb := jThumbRez.O['default'];
+
+    If jThumb <> nil then
+    Begin
+      Result := jThumb.S['url'];
+      jThumb.Clear(True);
+      jThumb := nil;
+    End
+    {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON thumb object returned nil'){$ENDIF};
+    jThumbRez.Clear(True);
+    jThumbRez := nil;
+  End
+  {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON thumb resolution object returned nil'){$ENDIF};
+end;
+
+
+function YouTube_ISO8601toSeconds(sISO : String) : Integer;
+var
+  I     : Integer;
+  sLen  : Integer;
+  iHour : Integer;
+  iMin  : Integer;
+  iSec  : Integer;
+  S     : String;
+begin
+  iHour := 0;
+  iMin  := 0;
+  iSec  := 0;
+
+  S     := '';
+  sLen  := Length(sISO);
+
+  If sLen > 3 then
+  Begin
+    If Pos('PT',sISO) = 1 then
+    Begin
+      For I := 3 to sLen do
+      Begin
+        Case sISO[I] of
+          '0'..'9' : S := S+sISO[I];
+          'H'      : Begin iHour := StrToIntDef(S,0); S := ''; End;
+          'M'      : Begin iMin  := StrToIntDef(S,0); S := ''; End;
+          'S'      : Begin iSec  := StrToIntDef(S,0); S := ''; End;
+        End;
+      End;
+    End;
+  End;
+
+  Result := (iHour*3600)+(iMin*60)+iSec;
 end;
 
 

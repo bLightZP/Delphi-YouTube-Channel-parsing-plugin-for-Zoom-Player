@@ -1,4 +1,4 @@
-{$I PLUGIN_DEFINES.INC}
+{$I YOUTUBE_PLUGIN_DEFINES.INC}
 
      {********************************************************************
       | This Source Code is subject to the terms of the                  |
@@ -542,7 +542,7 @@ begin
                 ytvEntry^.ytvPublished := 0;;
               End;
 
-              ytvEntry^.ytvThumbnail := GetBestThumbnailURL(jSnippet);
+              ytvEntry^.ytvThumbnail := YouTube_GetBestThumbnailURL(jSnippet);
 
               jSnippet.Clear(True);
               jSnippet := nil;
@@ -660,7 +660,7 @@ begin
                 If jSnippet <> nil then
                 Begin
                   S := jSnippet.S['duration'];
-                  PYouTubeVideoRecord(ytvList[I1])^.ytvDuration := YouTubeISO8601toSeconds(S);
+                  PYouTubeVideoRecord(ytvList[I1])^.ytvDuration := YouTube_ISO8601toSeconds(S);
                   jSnippet.Clear(True);
                   jSnippet := nil;
                 End
@@ -712,7 +712,7 @@ begin
       ytvList.Add(ytvEntry);
     End;
 
-    For I := 0 to ytvList.Count-1 do
+    For I := 0 to ytvList.Count-1 do If (PYouTubeVideoRecord(ytvList[I])^.ytvDuration > 0) or (PYouTubeVideoRecord(ytvList[I])^.ytvType <> 0) then
     Begin
       If I = 0 then
         sItemList := YTVrecordToString(PYouTubeVideoRecord(ytvList[I])) else
