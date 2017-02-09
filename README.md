@@ -9,5 +9,5 @@ This Zoom Player plugin uses the YouTube data API to:<br>
 <li>Download meta-data on videos based on a search query.
 </ol>
 <font size=-1>
-PLUGIN_DEFINES.INC includes the compiler directives to switch between the multiple Plugin modes (Channel/Search/Trending/etc...)
+YOUTUBE_PLUGIN_DEFINES.INC includes the compiler directives to switch between the multiple Plugin modes (Channel/Search/Trending/etc...)
 </font>
