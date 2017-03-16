@@ -333,6 +333,7 @@ type
   Record
     ytvType         : Integer;
     ytvPath         : WideString;
+    ytvChannelName  : WideString;
     ytvTitle        : WideString;
     ytvDescription  : WideString;
     ytvPublished    : TDateTime;
@@ -351,6 +352,7 @@ var
   S,S1        : String;
   sID         : String;
   I,I1        : Integer;
+  iLen        : Integer;
   sList       : TStringList;
   jBase       : ISuperObject;
   jItems      : ISuperObject;
@@ -360,6 +362,7 @@ var
   dlError     : Integer;
   sJSON       : String;
   sURL        : String;
+  sUTF8       : String;
   sToken      : String;
   sItemList   : WideString;
   sIDList     : String;
@@ -374,6 +377,7 @@ var
   begin
     ytvEntry^.ytvType         := 0;
     ytvEntry^.ytvPath         := '';
+    ytvEntry^.ytvChannelName  := '';
     ytvEntry^.ytvTitle        := '';
     ytvEntry^.ytvDescription  := '';
     ytvEntry^.ytvPublished    := 0;;
@@ -389,6 +393,7 @@ var
     sPath       : String;
     sDuration   : String;
     sDate       : WideString;
+    sTitle      : WideString;
     sMetaLikes  : String;
     iMetaRating : Integer;
   Begin
@@ -401,6 +406,8 @@ var
     sMetaLikes := 'Likes :\n'+IntToStrDelimiter(Entry^.ytvLikeCount,',')+'\n\nDislikes :\n'+IntToStrDelimiter(Entry^.ytvDislikeCount,',');
 
     sDuration := EncodeDuration(Entry^.ytvDuration);
+    sTitle    := Entry^.ytvTitle;
+    If Entry^.ytvChannelName <> '' then sTitle := sTitle+'  @'+Entry^.ytvChannelName;
 
     // Generate a rating value based on ratio between likes and dislikes
     iMetaRating := 0;
@@ -424,7 +431,7 @@ var
               // user login not implemented, no way to pass the last play position
               //'"Position='    +FloatToStr(Entry^.ytvPosition)+'",'+
               '"Date='        +FloatToStr(Entry^.ytvPublished)+'",'+
-              '"MetaEntry1='  +EncodeTextTags(Entry^.ytvTitle,True)+'",'+
+              '"MetaEntry1='  +EncodeTextTags(sTitle,True)+'",'+
               '"MetaEntry2='  +sDate+'",'+
               '"MetaEntry3='  +sDuration+'",'+
               '"MetaEntry4='  +IntToStrDelimiter(Entry^.ytvViewCount,',')+' views",'+
@@ -446,8 +453,6 @@ begin
 
   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'GetList (before)');{$ENDIF}
   Result             := E_FAIL;
-  ItemList^.catItems := '';
-
 
   sList   := TStringList.Create;
   ytvList := TList.Create;
@@ -524,6 +529,10 @@ begin
             jSnippet := jEntry.O['snippet'];
             If jSnippet <> nil then
             Begin
+              {$IF Defined(TRENDINGMODE) or Defined(SEARCHMODE)}
+              ytvEntry^.ytvChannelName := UTF8StringToWideString(jSnippet.S['channelTitle']);
+              {$IFEND}
+
               ytvEntry^.ytvTitle       := UTF8StringToWideString(jSnippet.S['title']);
               ytvEntry^.ytvDescription := UTF8StringToWideString(jSnippet.S['description']);
               S := jSnippet.S['publishedAt'];
@@ -743,7 +752,15 @@ begin
       {$ENDIF}
     End;
 
-    ItemList^.catItems := PChar(UTF8Encode(sItemList));
+    sUTF8 := UTF8Encode(sItemList);
+    iLen  := Length(sUTF8);
+    If iLen < 1024*1024 then
+    Begin
+      Move(sUTF8[1],ItemList^.catItems^,iLen);
+      //ItemList^.catItems := PChar(sUTF8);
+    End
+    {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'YouTube parsed results larger than the 1mb buffer!!!'){$ENDIF};
+
     Result := S_OK;
   End;
 
@@ -816,5 +833,7 @@ exports
 
 
 begin
+  // Required to notify the memory manager that this DLL is being called from a multi-threaded application!
+  IsMultiThread := True;
 end.
 
