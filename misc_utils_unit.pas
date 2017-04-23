@@ -1,4 +1,3 @@
-{$I RSS_PLUGIN_DEFINES.INC}
 unit misc_utils_unit;
 
 
