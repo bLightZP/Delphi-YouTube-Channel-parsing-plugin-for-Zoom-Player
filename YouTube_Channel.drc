@@ -8,6 +8,7 @@
   resources were bound to the produced executable.
 */
 
+#define ComConst_STooManyParams 65264
 #define ExtCtrls_clNameInfoText 65280
 #define ExtCtrls_clNameMenu 65281
 #define ExtCtrls_clNameMenuText 65282
@@ -19,10 +20,11 @@
 #define ExtCtrls_clNameWindowFrame 65288
 #define ExtCtrls_clNameWindowText 65289
 #define WinHelpViewer_hNoKeyword 65290
-#define ComConst_SOleError 65291
-#define ComConst_SNoMethod 65292
-#define ComConst_SVarNotObject 65293
-#define ComConst_STooManyParams 65294
+#define TntSystem_SBufferOverflow 65291
+#define TntSystem_SInvalidUTF7 65292
+#define ComConst_SOleError 65293
+#define ComConst_SNoMethod 65294
+#define ComConst_SVarNotObject 65295
 #define ExtCtrls_clNameActiveCaption 65296
 #define ExtCtrls_clNameAppWorkSpace 65297
 #define ExtCtrls_clNameBackground 65298
@@ -265,6 +267,7 @@
 #define SysConst_SInvalidOp 65535
 STRINGTABLE
 BEGIN
+	ComConst_STooManyParams,	"Dispatch methods do not support more than 64 parameters"
 	ExtCtrls_clNameInfoText,	"Info Text"
 	ExtCtrls_clNameMenu,	"Menu Background"
 	ExtCtrls_clNameMenuText,	"Menu Text"
@@ -276,10 +279,11 @@ BEGIN
 	ExtCtrls_clNameWindowFrame,	"Window Frame"
 	ExtCtrls_clNameWindowText,	"Window Text"
 	WinHelpViewer_hNoKeyword,	"No help keyword specified."
+	TntSystem_SBufferOverflow,	"Buffer overflow"
+	TntSystem_SInvalidUTF7,	"Invalid UTF7"
 	ComConst_SOleError,	"OLE error %.8x"
 	ComConst_SNoMethod,	"Method '%s' not supported by automation object"
 	ComConst_SVarNotObject,	"Variant does not reference an automation object"
-	ComConst_STooManyParams,	"Dispatch methods do not support more than 64 parameters"
 	ExtCtrls_clNameActiveCaption,	"Active Caption"
 	ExtCtrls_clNameAppWorkSpace,	"Application Workspace"
 	ExtCtrls_clNameBackground,	"Background"
