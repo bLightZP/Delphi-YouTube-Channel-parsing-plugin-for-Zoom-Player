@@ -45,6 +45,9 @@ uses
   SuperObject,
   WinInet,
   misc_utils_unit,
+  {$IFDEF LOCALTRACE}
+  msgdlgunit,
+  {$ENDIF}
   ISO_3166_1_alpha_2_unit,
   youtube_api;
 
@@ -58,6 +61,7 @@ Type
     CategoryID    : PChar;
     CategoryTitle : PChar;
     CategoryThumb : PChar;
+    DataPath      : PChar;
     Scrapers      : PChar;
     TextLines     : Integer;
     DefaultFlags  : Integer;
@@ -175,11 +179,82 @@ begin
 end;
 
 
+// Called by Zoom Player to verify if the plugin can refresh itself (name/thumbnail).
+function CanRefresh : Bool; stdcall;
+begin
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'CanRefresh (before)');{$ENDIF}
+  {$IF DEFINED(SEARCHMODE) or DEFINED(TRENDINGMODE)}   // YouTube Search Plugin
+  Result := False;
+  {$ELSE}
+  Result := True;
+  {$IFEND}
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'CanRefresh (after)');{$ENDIF}
+end;
+
+
+// Called by Zoom Player to show the refresh the category (name/thumbnail).
+Function Refresh(CategoryData : PCategoryPluginRecord) : Integer; stdcall; 
+var
+  sCatInput   : String;
+  sTitle      : String;
+  sPlaylistID : String;
+  sThumbnail  : String;
+  I           : Integer;
+begin
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Refresh (before)');{$ENDIF}
+  Result       := E_FAIL;
+  If CategoryData = nil then
+  Begin
+    {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Exit on "CategoryData = nil"');{$ENDIF}
+    Exit;
+  End;
+
+  sCatInput    := CategoryData^.CategoryInput;
+  sPlaylistID  := '';
+  sThumbnail   := '';
+  CategoryData^.CategoryID    := '';
+  CategoryData^.CategoryTitle := '';
+  CategoryData^.CategoryThumb := '';
+  CategoryData^.Scrapers      := '';
+  CategoryData^.TextLines     := 2;
+  CategoryData^.SortMode      := srDate;
+  CategoryData^.DefaultFlags  := catFlagThumbView or catFlagThumbCrop or catFlagTitleFromMetaData;
+
+  If sCatInput <> '' then
+  Begin
+    {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel ID: '+sChannelID);{$ENDIF}
+
+    // Remove playlist ID
+    I := Pos(',',sCatInput);
+    If I > 0 then sCatInput := Copy(sCatInput,1,I-1);
+
+    // Get Channel Title, Thumbnail & Upload playlist ID
+    YouTube_GetChannelDetails(sCatInput,sTitle,sThumbnail,sPlaylistID);
+
+    // was used for alternative method of downloading youtube videos, sadly it returned them in a bad order.
+    If sPlaylistID <> '' then
+      CategoryData^.CategoryID := PChar(sCatInput+','+sPlaylistID) else
+      CategoryData^.CategoryID := PChar(sCatInput);
+
+    If sTitle <> '' then
+    Begin
+      CategoryData^.CategoryTitle := PChar(sTitle);
+      If sThumbnail <> '' then CategoryData^.CategoryThumb := PChar(sThumbnail);
+      Result := S_OK;
+    End;
+  End
+  {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'No Channel ID specified!'){$ENDIF};
+
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Refresh (after)');{$ENDIF}
+end;
+
+
 Function CreateCategory(CenterOnWindow : HWND; CategoryData : PCategoryPluginRecord) : Integer; stdcall;
 var
   sCatInput   : String;
   sCatInputLC : String;
   sChannelID  : String;
+  sPlaylistID : String;
   sTitle      : String;
   sThumbnail  : String;
   sCatID      : String;
@@ -209,8 +284,10 @@ begin
   End;
 
   sCatInput    := CategoryData^.CategoryInput;
+  //ShowMessageW(sCatInput+ ' / '+UTF8Decode(sCatInput));
   sCatInputLC  := Lowercase(sCatInput);
   sChannelID   := '';
+  sPlaylistID  := '';
   sThumbnail   := '';
   CategoryData^.CategoryID    := '';
   CategoryData^.CategoryTitle := '';
@@ -226,6 +303,7 @@ begin
   // **********************************************************************************
   CategoryData^.CategoryID    := PChar(sCatInput);
   CategoryData^.CategoryTitle := PChar('Search:'+sCatInput);
+  CategoryData^.CategoryThumb := PChar(UTF8Encode(GetCurrentDLLPath)+'YouTube_Search.jpg');
   Result := S_OK;
   {$ELSE}
 
@@ -254,7 +332,7 @@ begin
 
   uStr := '';
   uList.InsertObject(0,strEverything,TObject(-1));
-  If InputComboW(CenterOnWindow,'Category :', '', uList,uStr) = True then
+  If misc_utils_unit.InputComboW(CenterOnWindow,'Category :', '', uList,uStr) = True then
   Begin
     For I := 0 to uList.Count-1 do If uStr = uList[I] then
     Begin
@@ -263,6 +341,7 @@ begin
       Break;
     End;
     CategoryData^.CategoryID    := PChar(sCatID);
+    CategoryData^.CategoryThumb := PChar(UTF8Encode(GetCurrentDLLPath)+'YouTube_Trending.jpg');  
     Result := S_OK;
   End
   Else Result := S_FALSE; // prevents an error dialog, used for "cancel".
@@ -307,10 +386,13 @@ begin
     If sChannelID <> '' then
     Begin
       {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel ID: '+sChannelID);{$ENDIF}
-      CategoryData^.CategoryID := PChar(sChannelID);
 
-      // Get Channel Title and Thumbnail
-      YouTube_GetChannelNameAndThumbnail(sChannelID,sTitle,sThumbnail);
+      // Get Channel Title, Thumbnail & Upload playlist ID
+      YouTube_GetChannelDetails(sChannelID,sTitle,sThumbnail,sPlaylistID);
+
+      If sPlaylistID <> '' then
+        CategoryData^.CategoryID := PChar(sChannelID+','+sPlaylistID) else
+        CategoryData^.CategoryID := PChar(sChannelID);
 
       If sTitle <> '' then
       Begin
@@ -327,7 +409,13 @@ begin
 end;
 
 
-Function GetList(CategoryID : PChar; CategoryPath : PChar; ItemList : PCategoryItemList) : Integer; stdcall;
+function DeleteCategory(CenterOnWindow : HWND; CategoryID,DataPath : PChar) : Integer; stdcall;
+begin
+  Result := S_OK;
+end;
+
+
+Function GetList(CategoryID, CategoryPath, DataPath : PChar; ItemList : PCategoryItemList) : Integer; stdcall;
 type
   TYouTubeVideoRecord =
   Record
@@ -358,6 +446,7 @@ var
   jItems      : ISuperObject;
   jEntry      : ISuperObject;
   jSnippet    : ISuperObject;
+  jResourceID : ISuperObject;
   dlStatus    : String;
   dlError     : Integer;
   sJSON       : String;
@@ -368,6 +457,8 @@ var
   sIDList     : String;
   ytvList     : TList;
   ytvEntry    : PYouTubeVideoRecord;
+  mStream     : TMemoryStream;
+  sPlaylistID : String;
   {$IFDEF TRENDINGMODE}
   iCatType    : Integer;
   sCatRegion  : String;
@@ -403,11 +494,17 @@ var
     End;
     If Entry^.ytvPublished > 0 then sDate := TimeDifferenceToStr(Now,Entry^.ytvPublished) else sDate := '';
 
-    sMetaLikes := 'Likes :\n'+IntToStrDelimiter(Entry^.ytvLikeCount,',')+'\n\nDislikes :\n'+IntToStrDelimiter(Entry^.ytvDislikeCount,',');
+        // #9/TAB is used for right-alignment of text
+    sMetaLikes :=
+      IntToStrDelimiter(Entry^.ytvViewCount   ,',')+' views\n\n'+
+      IntToStrDelimiter(Entry^.ytvLikeCount   ,',')+' likes\n\n'+
+      IntToStrDelimiter(Entry^.ytvDislikeCount,',')+' dislikes';
+
+    //If Entry^.ytvChannelName <> '' then sMetaLikes := Entry^.ytvChannelName+'\n\n'+sMetaLikes;
 
     sDuration := EncodeDuration(Entry^.ytvDuration);
     sTitle    := Entry^.ytvTitle;
-    If Entry^.ytvChannelName <> '' then sTitle := sTitle+'  @'+Entry^.ytvChannelName;
+    //If Entry^.ytvChannelName <> '' then sTitle := sTitle+'  @'+Entry^.ytvChannelName;
 
     // Generate a rating value based on ratio between likes and dislikes
     iMetaRating := 0;
@@ -434,7 +531,7 @@ var
               '"MetaEntry1='  +EncodeTextTags(sTitle,True)+'",'+
               '"MetaEntry2='  +sDate+'",'+
               '"MetaEntry3='  +sDuration+'",'+
-              '"MetaEntry4='  +IntToStrDelimiter(Entry^.ytvViewCount,',')+' views",'+
+              '"MetaEntry4='  +Entry^.ytvChannelName+'",'+
               '"MetaEntry5='  +EncodeTextTags(Entry^.ytvDescription,True)+'",'+
               '"MetaEntry6='  +sMetaLikes+'",'+
               '"MetaRating='  +IntToStr(iMetaRating)+'"';
@@ -442,6 +539,13 @@ var
 
 
 begin
+  // **** Getting upload playlist:
+  // https://www.googleapis.com/youtube/v3/channels?key=[apikey]&part=contentDetails&id=[ChannelID]
+  //
+  // **** Getting playlist data:
+  // https://www.googleapis.com/youtube/v3/playlistitems?key=[apikey]&part=snippet,id&playlistId=[playlistId]&maxResults='+IntToStr(YouTube_VideoFetch)
+  // e.g. : https://www.googleapis.com/youtube/v3/playlistItems?key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&part=snippet,id&playlistId=UUEK3tT7DcfWGWJpNEDBdWog&maxResults=25
+
   // CategoryID   = A unique category identifier, in our case, a YouTube channel's "Channel ID".
   // CategoryPath = Used to the pass a path or parameter, in our case, a YouTube channel's next page Token.
   // ItemList     = Return a list of items and meta-data
@@ -454,13 +558,21 @@ begin
   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'GetList (before)');{$ENDIF}
   Result             := E_FAIL;
 
-  sList   := TStringList.Create;
-  ytvList := TList.Create;
+  sList       := TStringList.Create;
+  ytvList     := TList.Create;
+  sPlaylistID := '';
   {$IFDEF SEARCHMODE}
+  // *********************
+  // **** Search mode ****
+  // *********************
   //https://www.googleapis.com/youtube/v3/search?part=snippet,id&q=[Search]&type=video&key={YOUR_API_KEY}
   sURL    := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&q='+URLEncodeUTF8(UTF8Decode(CategoryID))+'&part=snippet,id&order=relevance&type=video&maxResults='+IntToStr(YouTube_VideoFetch);
+  //ShowMessageW(CategoryID+' / '+UTF8Decode(CategoryID)+' / '+ URLEncodeUTF8(UTF8Decode(S)));
   {$ELSE}
     {$IFDEF TRENDINGMODE}
+    // ******************
+    // **** Trending ****
+    // ******************
     S := CategoryID;
     I := Pos(',',S);
     If I > 0 then
@@ -483,8 +595,21 @@ begin
     If iCatType > -1 then S := S+'&videoCategoryId='+IntToStr(iCatType);
     sURL    := 'https://www.googleapis.com/youtube/v3/videos?part=snippet,id&chart=mostPopular'+S+'&maxResults='+IntToStr(YouTube_VideoFetch)+'&key='+APIKey;
     {$ELSE}
-    //https://www.googleapis.com/youtube/v3/search?key=[key]&channelId=UClFSU9_bUb4Rc6OYfTt5SPw&part=snippet,id&order=date&maxResults=3
-    sURL    := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&channelId='+CategoryID+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetch);
+    // **********************
+    // **** Channel List ****
+    // **********************
+    S := CategoryID;
+    I := Pos(',',S);
+    If I > 0 then
+    Begin
+      sPlaylistID := Copy(S,I+1,Length(S)-I);
+      sURL := 'https://www.googleapis.com/youtube/v3/playlistItems?key='+APIKey+'&playlistId='+sPlaylistID+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetch);
+      //https://www.googleapis.com/youtube/v3/playlistItems?key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&part=snippet,id&playlistId=UUEK3tT7DcfWGWJpNEDBdWog&maxResults=25
+    End
+      else
+    Begin
+      sURL := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&channelId='+CategoryID+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetch);
+    End;
     {$ENDIF}
   {$ENDIF}
   sToken  := CategoryPath;
@@ -513,50 +638,92 @@ begin
           jEntry := jItems.AsArray.O[I];
           If jEntry <> nil then
           Begin
-            {$IFDEF TRENDINGMODE}
-            ytvEntry^.ytvPath := jEntry.S['id'];
-            {$ELSE}
-            jSnippet := jEntry.O['id'];
-            If jSnippet <> nil then
+            If sPlaylistID = '' then
             Begin
-              ytvEntry^.ytvPath := jSnippet.S['videoId'];
-              jSnippet.Clear(True);
-              jSnippet := nil;
-            End
-            {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON id object returned nil'){$ENDIF};
-            {$ENDIF}
+              // Parse channel/search/trending
+              {$IFDEF TRENDINGMODE}
+              ytvEntry^.ytvPath := jEntry.S['id'];
+              {$ELSE}
+              jSnippet := jEntry.O['id'];
+              If jSnippet <> nil then
+              Begin
+                ytvEntry^.ytvPath := jSnippet.S['videoId'];
+                jSnippet.Clear(True);
+                jSnippet := nil;
+              End
+              {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON id object returned nil'){$ENDIF};
+              {$ENDIF}
 
-            jSnippet := jEntry.O['snippet'];
-            If jSnippet <> nil then
+              jSnippet := jEntry.O['snippet'];
+              If jSnippet <> nil then
+              Begin
+                //{$IF Defined(TRENDINGMODE) or Defined(SEARCHMODE)}
+                ytvEntry^.ytvChannelName := UTF8StringToWideString(jSnippet.S['channelTitle']);
+                //{$IFEND}
+
+                ytvEntry^.ytvTitle       := UTF8StringToWideString(jSnippet.S['title']);
+                ytvEntry^.ytvDescription := UTF8StringToWideString(jSnippet.S['description']);
+                S := jSnippet.S['publishedAt'];
+                Try
+                  // format: 2016-12-04T20:00:02.000Z
+                  ytvEntry^.ytvPublished := EncodeDateTime(
+                      StrToInt(Copy(S, 1,4)),  // Year
+                      StrToInt(Copy(S, 6,2)),  // Month
+                      StrToInt(Copy(S, 9,2)),  // Day
+                      StrToInt(Copy(S,12,2)),  // Hour
+                      StrToInt(Copy(S,15,2)),  // Minute
+                      StrToInt(Copy(S,18,2)),  // Second
+                      StrToInt(Copy(S,21,3))); // MS
+                Except
+                  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Published Exception on : '+S);{$ENDIF}
+                  ytvEntry^.ytvPublished := 0;;
+                End;
+
+                ytvEntry^.ytvThumbnail := YouTube_GetBestThumbnailURL(jSnippet);
+
+                jSnippet.Clear(True);
+                jSnippet := nil;
+              End
+              {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON snippet object returned nil'){$ENDIF};
+            End
+              else
             Begin
-              {$IF Defined(TRENDINGMODE) or Defined(SEARCHMODE)}
-              ytvEntry^.ytvChannelName := UTF8StringToWideString(jSnippet.S['channelTitle']);
-              {$IFEND}
+              // Parse playlist
+              jSnippet := jEntry.O['snippet'];
+              If jSnippet <> nil then
+              Begin
+                ytvEntry^.ytvChannelName := UTF8StringToWideString(jSnippet.S['channelTitle']);
+                ytvEntry^.ytvTitle       := UTF8StringToWideString(jSnippet.S['title']);
+                ytvEntry^.ytvDescription := UTF8StringToWideString(jSnippet.S['description']);
+                S := jSnippet.S['publishedAt'];
+                Try
+                  // format: 2016-12-04T20:00:02.000Z
+                  ytvEntry^.ytvPublished := EncodeDateTime(
+                      StrToInt(Copy(S, 1,4)),  // Year
+                      StrToInt(Copy(S, 6,2)),  // Month
+                      StrToInt(Copy(S, 9,2)),  // Day
+                      StrToInt(Copy(S,12,2)),  // Hour
+                      StrToInt(Copy(S,15,2)),  // Minute
+                      StrToInt(Copy(S,18,2)),  // Second
+                      StrToInt(Copy(S,21,3))); // MS
+                Except
+                  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Published Exception on : '+S);{$ENDIF}
+                  ytvEntry^.ytvPublished := 0;;
+                End;
+                ytvEntry^.ytvThumbnail := YouTube_GetBestThumbnailURL(jSnippet);
 
-              ytvEntry^.ytvTitle       := UTF8StringToWideString(jSnippet.S['title']);
-              ytvEntry^.ytvDescription := UTF8StringToWideString(jSnippet.S['description']);
-              S := jSnippet.S['publishedAt'];
-              Try
-                // format: 2016-12-04T20:00:02.000Z
-                ytvEntry^.ytvPublished := EncodeDateTime(
-                    StrToInt(Copy(S, 1,4)),  // Year
-                    StrToInt(Copy(S, 6,2)),  // Month
-                    StrToInt(Copy(S, 9,2)),  // Day
-                    StrToInt(Copy(S,12,2)),  // Hour
-                    StrToInt(Copy(S,15,2)),  // Minute
-                    StrToInt(Copy(S,18,2)),  // Second
-                    StrToInt(Copy(S,21,3))); // MS
-              Except
-                {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Published Exception on : '+S);{$ENDIF}
-                ytvEntry^.ytvPublished := 0;;
-              End;
-
-              ytvEntry^.ytvThumbnail := YouTube_GetBestThumbnailURL(jSnippet);
-
-              jSnippet.Clear(True);
-              jSnippet := nil;
-            End
-            {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON snippet object returned nil'){$ENDIF};
+                jResourceID := jSnippet.O['resourceId'];
+                If jResourceID <> nil then
+                Begin
+                  ytvEntry^.ytvPath := jResourceID.S['videoId'];
+                  jResourceID.Clear(True);
+                  jResourceID := nil;
+                End;
+                jSnippet.Clear(True);
+                jSnippet := nil;
+              End
+              {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON snippet object returned nil'){$ENDIF};
+            End;
 
             // Add entry to list
             If (ytvEntry^.ytvPath <> '') and (ytvEntry^.ytvTitle <> '') then
@@ -702,7 +869,7 @@ begin
       End
       {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON items object returned nil'){$ENDIF};
     End;
-
+  End;
 
     // Add a 'refresh' entry
     New(ytvEntry);
@@ -721,11 +888,17 @@ begin
       ytvList.Add(ytvEntry);
     End;
 
+    mStream := TMemoryStream.Create;
     For I := 0 to ytvList.Count-1 do If (PYouTubeVideoRecord(ytvList[I])^.ytvDuration > 0) or (PYouTubeVideoRecord(ytvList[I])^.ytvType <> 0) then
     Begin
       If I = 0 then
-        sItemList := YTVrecordToString(PYouTubeVideoRecord(ytvList[I])) else
-        sItemList := sItemList+'|'+YTVrecordToString(PYouTubeVideoRecord(ytvList[I]));
+        sUTF8 := UTF8Encode(YTVrecordToString(PYouTubeVideoRecord(ytvList[I]))) else
+        sUTF8 := '|'+UTF8Encode(YTVrecordToString(PYouTubeVideoRecord(ytvList[I])));
+        //sItemList := YTVrecordToString(PYouTubeVideoRecord(ytvList[I])) else
+        //sItemList := sItemList+'|'+YTVrecordToString(PYouTubeVideoRecord(ytvList[I]));
+
+      mStream.Write(sUTF8[1],Length(sUTF8));
+
       {$IFDEF LOCALTRACE}
       With PYouTubeVideoRecord(ytvList[I])^ do
       Begin
@@ -752,17 +925,27 @@ begin
       {$ENDIF}
     End;
 
-    sUTF8 := UTF8Encode(sItemList);
-    iLen  := Length(sUTF8);
-    If iLen < 1024*1024 then
+    //sUTF8 := UTF8Encode(sItemList);
+    //Len  := Length(sUTF8);
+    If mStream.Size > 0 then
     Begin
-      Move(sUTF8[1],ItemList^.catItems^,iLen);
-      //ItemList^.catItems := PChar(sUTF8);
+      If mStream.Size < 1024*1024 then
+      //If iLen < 1024*1024 then
+      Begin
+        {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Result size : '+IntToStr(mStream.Size)+' bytes');{$ENDIF}
+        sUTF8 := #0;
+        mStream.Write(sUTF8[1],1);
+        mStream.Position := 0;
+        mStream.Read(ItemList^.catItems^,mStream.Size);
+        //Move(sUTF8[1],ItemList^.catItems^,iLen);
+      End
+      {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'YouTube parsed results larger than the 1mb buffer!!!'){$ENDIF};
     End
-    {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'YouTube parsed results larger than the 1mb buffer!!!'){$ENDIF};
+    {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'No data received!'){$ENDIF};
+    mStream.Free;
 
     Result := S_OK;
-  End;
+  //End;
 
   For I := 0 to ytvList.Count-1 do Dispose(PYouTubeVideoRecord(ytvList[I]));
   ytvList.Free;
@@ -808,6 +991,12 @@ begin
 end;
 
 
+function RequireInput : Bool; stdcall;
+begin
+  Result := False;
+end;
+
+
 {
  Creating:
  1. Create a new "YouTube" video channel category, specify a channel URL.
@@ -824,11 +1013,15 @@ end;
 exports
    InitPlugin,
    FreePlugin,
+   CanRefresh,
+   Refresh,
    CanConfigure,
    Configure,
    GetList,
    CreateCategory,
+   DeleteCategory,
    RequireTitle,
+   RequireInput,
    GetInputID;
 
 

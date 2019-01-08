@@ -13,7 +13,7 @@ const
   {$ENDIF}
 
 function  YouTube_ConvertUserNameToChannelID(sUserName : String) : String;
-procedure YouTube_GetChannelNameAndThumbnail(sChannelID : String; var sTitle,sThumbnail : String);
+procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID : String);
 procedure YouTube_GetCategoryIDs(regionCode : String; uList : TTNTStringList);
 function  YouTube_GetBestThumbnailURL(jSnippet : ISuperObject) : String;
 function  YouTube_ISO8601toSeconds(sISO : String) : Integer;
@@ -80,22 +80,43 @@ begin
 end;
 
 
-procedure YouTube_GetChannelNameAndThumbnail(sChannelID : String; var sTitle,sThumbnail : String);
+{procedure YouTube_GetUploadPlaylistID(sChannelID : String; var sPlaylistID : String);
 var
   sList    : TStringList;
   jBase    : ISuperObject;
-  jItems   : ISuperObject;
-  jEntry   : ISuperObject;
-  jSnippet : ISuperObject;
-  dlStatus : String;
-  dlError  : Integer;
-  sJSON    : String;
 begin
+  // https://www.googleapis.com/youtube/v3/channels?key=[apikey]&part=contentDetails&id=[ChannelID]
+  //https://www.googleapis.com/youtube/v3/channels?key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&part=snippet&id=UCEK3tT7DcfWGWJpNEDBdWog
+  //https://www.googleapis.com/youtube/v3/channels?key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&part=snippet,contentDetails&id=UCEK3tT7DcfWGWJpNEDBdWog
+  sList := TStringList.Create;
+  If DownloadFileToStringList('https://www.googleapis.com/youtube/v3/channels?key='+APIKEY+'&part=snippet&id='+sChannelID,sList,dlStatus,dlError,2000) = True then
+  Begin
+
+  End;
+  sList.Free;
+end;}
+
+
+procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID : String);
+var
+  sList      : TStringList;
+  jBase      : ISuperObject;
+  jItems     : ISuperObject;
+  jEntry     : ISuperObject;
+  jSnippet   : ISuperObject;
+  jPlaylists : ISuperObject;
+  dlStatus   : String;
+  dlError    : Integer;
+  sJSON      : String;
+begin
+  // test: https://www.youtube.com/channel/UCEK3tT7DcfWGWJpNEDBdWog
+  // https://www.googleapis.com/youtube/v3/channels?key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&part=snippet,contentDetails&id=UCEK3tT7DcfWGWJpNEDBdWog
+
   sTitle     := '';
   sThumbnail := '';
 
   sList := TStringList.Create;
-  If DownloadFileToStringList('https://www.googleapis.com/youtube/v3/channels?key='+APIKEY+'&part=snippet&id='+sChannelID,sList,dlStatus,dlError,2000) = True then
+  If DownloadFileToStringList('https://www.googleapis.com/youtube/v3/channels?key='+APIKEY+'&part=snippet,contentDetails&id='+sChannelID,sList,dlStatus,dlError,2000) = True then
   Begin
     If sList.Count > 0 then
     Begin
@@ -112,6 +133,7 @@ begin
             jEntry := jItems.AsArray.O[0];
             If jEntry <> nil then
             Begin
+              // Get Title & Thumbnail
               jSnippet := jEntry.O['snippet'];
               If jSnippet <> nil then
               Begin
@@ -124,6 +146,27 @@ begin
                 jSnippet := nil;
               End
               {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON snippet object returned nil'){$ENDIF};
+
+              // Get upload playlist ID - problematic, doesn't return videos by publish date
+              (*
+              jSnippet := jEntry.O['contentDetails'];
+              If jSnippet <> nil then
+              Begin
+                jPlaylists := jSnippet.O['relatedPlaylists'];
+                If jPlaylists <> nil then
+                Begin
+                  sPlaylistID := jPlaylists.S['uploads'];
+                  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Upload playlist ID: '+sPlaylistID);{$ENDIF}
+                  jPlaylists.Clear(True);
+                  jPlaylists := nil;
+                End
+                {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON entry object returned nil for "relatedPlaylists"'){$ENDIF};
+                jSnippet.Clear(True);
+                jSnippet := nil;
+              End
+              {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON object returned nil for "contentDetails"'){$ENDIF};
+              *)
+
               jEntry.Clear(True);
               jEntry := nil;
             End
@@ -132,7 +175,8 @@ begin
           jItems.Clear(True);
           jItems := nil;
         End
-        {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON items object returned nil'){$ENDIF};
+        {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON items object returned nil for "items"'){$ENDIF};
+
         jBase.Clear(True);
         jBase := nil;
       End
