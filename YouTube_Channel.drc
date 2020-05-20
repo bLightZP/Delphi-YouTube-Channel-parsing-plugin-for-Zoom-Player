@@ -8,71 +8,72 @@
   resources were bound to the produced executable.
 */
 
-#define ComConst_STooManyParams 65264
-#define ExtCtrls_clNameInfoText 65280
-#define ExtCtrls_clNameMenu 65281
-#define ExtCtrls_clNameMenuText 65282
-#define ExtCtrls_clNameNone 65283
-#define ExtCtrls_clNameScrollBar 65284
-#define ExtCtrls_clName3DDkShadow 65285
-#define ExtCtrls_clName3DLight 65286
-#define ExtCtrls_clNameWindow 65287
-#define ExtCtrls_clNameWindowFrame 65288
-#define ExtCtrls_clNameWindowText 65289
-#define WinHelpViewer_hNoKeyword 65290
-#define TntSystem_SBufferOverflow 65291
-#define TntSystem_SInvalidUTF7 65292
-#define ComConst_SOleError 65293
-#define ComConst_SNoMethod 65294
-#define ComConst_SVarNotObject 65295
-#define ExtCtrls_clNameActiveCaption 65296
-#define ExtCtrls_clNameAppWorkSpace 65297
-#define ExtCtrls_clNameBackground 65298
-#define ExtCtrls_clNameBtnFace 65299
-#define ExtCtrls_clNameBtnHighlight 65300
-#define ExtCtrls_clNameBtnShadow 65301
-#define ExtCtrls_clNameBtnText 65302
-#define ExtCtrls_clNameCaptionText 65303
-#define ExtCtrls_clNameDefault 65304
-#define ExtCtrls_clNameGrayText 65305
-#define ExtCtrls_clNameHighlight 65306
-#define ExtCtrls_clNameHighlightText 65307
-#define ExtCtrls_clNameInactiveBorder 65308
-#define ExtCtrls_clNameInactiveCaption 65309
-#define ExtCtrls_clNameInactiveCaptionText 65310
-#define ExtCtrls_clNameInfoBk 65311
-#define ExtCtrls_clNamePurple 65312
-#define ExtCtrls_clNameTeal 65313
-#define ExtCtrls_clNameGray 65314
-#define ExtCtrls_clNameSilver 65315
-#define ExtCtrls_clNameRed 65316
-#define ExtCtrls_clNameLime 65317
-#define ExtCtrls_clNameYellow 65318
-#define ExtCtrls_clNameBlue 65319
-#define ExtCtrls_clNameFuchsia 65320
-#define ExtCtrls_clNameAqua 65321
-#define ExtCtrls_clNameWhite 65322
-#define ExtCtrls_clNameMoneyGreen 65323
-#define ExtCtrls_clNameSkyBlue 65324
-#define ExtCtrls_clNameCream 65325
-#define ExtCtrls_clNameMedGray 65326
-#define ExtCtrls_clNameActiveBorder 65327
+#define TntSystem_SBufferOverflow 65264
+#define TntSystem_SInvalidUTF7 65265
+#define ExtCtrls_clNameInfoBk 65280
+#define ExtCtrls_clNameInfoText 65281
+#define ExtCtrls_clNameMenu 65282
+#define ExtCtrls_clNameMenuText 65283
+#define ExtCtrls_clNameNone 65284
+#define ExtCtrls_clNameScrollBar 65285
+#define ExtCtrls_clName3DDkShadow 65286
+#define ExtCtrls_clName3DLight 65287
+#define ExtCtrls_clNameWindow 65288
+#define ExtCtrls_clNameWindowFrame 65289
+#define ExtCtrls_clNameWindowText 65290
+#define WinHelpViewer_hNoKeyword 65291
+#define ComConst_SOleError 65292
+#define ComConst_SNoMethod 65293
+#define ComConst_SVarNotObject 65294
+#define ComConst_STooManyParams 65295
+#define ExtCtrls_clNameActiveBorder 65296
+#define ExtCtrls_clNameActiveCaption 65297
+#define ExtCtrls_clNameAppWorkSpace 65298
+#define ExtCtrls_clNameBackground 65299
+#define ExtCtrls_clNameBtnFace 65300
+#define ExtCtrls_clNameBtnHighlight 65301
+#define ExtCtrls_clNameBtnShadow 65302
+#define ExtCtrls_clNameBtnText 65303
+#define ExtCtrls_clNameCaptionText 65304
+#define ExtCtrls_clNameDefault 65305
+#define ExtCtrls_clNameGrayText 65306
+#define ExtCtrls_clNameHighlight 65307
+#define ExtCtrls_clNameHighlightText 65308
+#define ExtCtrls_clNameInactiveBorder 65309
+#define ExtCtrls_clNameInactiveCaption 65310
+#define ExtCtrls_clNameInactiveCaptionText 65311
+#define ExtCtrls_clNameNavy 65312
+#define ExtCtrls_clNamePurple 65313
+#define ExtCtrls_clNameTeal 65314
+#define ExtCtrls_clNameGray 65315
+#define ExtCtrls_clNameSilver 65316
+#define ExtCtrls_clNameRed 65317
+#define ExtCtrls_clNameLime 65318
+#define ExtCtrls_clNameYellow 65319
+#define ExtCtrls_clNameBlue 65320
+#define ExtCtrls_clNameFuchsia 65321
+#define ExtCtrls_clNameAqua 65322
+#define ExtCtrls_clNameWhite 65323
+#define ExtCtrls_clNameMoneyGreen 65324
+#define ExtCtrls_clNameSkyBlue 65325
+#define ExtCtrls_clNameCream 65326
+#define ExtCtrls_clNameMedGray 65327
 #define Consts_SmkcAlt 65328
-#define Consts_SIconToClipboard 65329
-#define Consts_SDuplicateMenus 65330
-#define Consts_SDockedCtlNeedsName 65331
-#define Consts_SDockTreeRemoveError 65332
-#define Consts_SDockZoneNotFound 65333
-#define Consts_SDockZoneHasNoCtl 65334
-#define HelpIntfs_hNoTableOfContents 65335
-#define HelpIntfs_hNothingFound 65336
-#define HelpIntfs_hNoContext 65337
-#define HelpIntfs_hNoTopics 65338
-#define ExtCtrls_clNameBlack 65339
-#define ExtCtrls_clNameMaroon 65340
-#define ExtCtrls_clNameGreen 65341
-#define ExtCtrls_clNameOlive 65342
-#define ExtCtrls_clNameNavy 65343
+#define Consts_SInsertLineError 65329
+#define Consts_SIconToClipboard 65330
+#define Consts_SDuplicateMenus 65331
+#define Consts_SDockedCtlNeedsName 65332
+#define Consts_SDockTreeRemoveError 65333
+#define Consts_SDockZoneNotFound 65334
+#define Consts_SDockZoneHasNoCtl 65335
+#define HelpIntfs_hNoTableOfContents 65336
+#define HelpIntfs_hNothingFound 65337
+#define HelpIntfs_hNoContext 65338
+#define HelpIntfs_hNoTopics 65339
+#define ExtCtrls_clNameBlack 65340
+#define ExtCtrls_clNameMaroon 65341
+#define ExtCtrls_clNameGreen 65342
+#define ExtCtrls_clNameOlive 65343
 #define Consts_SmkcTab 65344
 #define Consts_SmkcEsc 65345
 #define Consts_SmkcEnter 65346
@@ -267,7 +268,9 @@
 #define SysConst_SInvalidOp 65535
 STRINGTABLE
 BEGIN
-	ComConst_STooManyParams,	"Dispatch methods do not support more than 64 parameters"
+	TntSystem_SBufferOverflow,	"Buffer overflow"
+	TntSystem_SInvalidUTF7,	"Invalid UTF7"
+	ExtCtrls_clNameInfoBk,	"Info Background"
 	ExtCtrls_clNameInfoText,	"Info Text"
 	ExtCtrls_clNameMenu,	"Menu Background"
 	ExtCtrls_clNameMenuText,	"Menu Text"
@@ -279,11 +282,11 @@ BEGIN
 	ExtCtrls_clNameWindowFrame,	"Window Frame"
 	ExtCtrls_clNameWindowText,	"Window Text"
 	WinHelpViewer_hNoKeyword,	"No help keyword specified."
-	TntSystem_SBufferOverflow,	"Buffer overflow"
-	TntSystem_SInvalidUTF7,	"Invalid UTF7"
 	ComConst_SOleError,	"OLE error %.8x"
 	ComConst_SNoMethod,	"Method '%s' not supported by automation object"
 	ComConst_SVarNotObject,	"Variant does not reference an automation object"
+	ComConst_STooManyParams,	"Dispatch methods do not support more than 64 parameters"
+	ExtCtrls_clNameActiveBorder,	"Active Border"
 	ExtCtrls_clNameActiveCaption,	"Active Caption"
 	ExtCtrls_clNameAppWorkSpace,	"Application Workspace"
 	ExtCtrls_clNameBackground,	"Background"
@@ -299,7 +302,7 @@ BEGIN
 	ExtCtrls_clNameInactiveBorder,	"Inactive Border"
 	ExtCtrls_clNameInactiveCaption,	"Inactive Caption"
 	ExtCtrls_clNameInactiveCaptionText,	"Inactive Caption Text"
-	ExtCtrls_clNameInfoBk,	"Info Background"
+	ExtCtrls_clNameNavy,	"Navy"
 	ExtCtrls_clNamePurple,	"Purple"
 	ExtCtrls_clNameTeal,	"Teal"
 	ExtCtrls_clNameGray,	"Gray"
@@ -315,8 +318,8 @@ BEGIN
 	ExtCtrls_clNameSkyBlue,	"Sky Blue"
 	ExtCtrls_clNameCream,	"Cream"
 	ExtCtrls_clNameMedGray,	"Medium Gray"
-	ExtCtrls_clNameActiveBorder,	"Active Border"
 	Consts_SmkcAlt,	"Alt+"
+	Consts_SInsertLineError,	"Unable to insert a line"
 	Consts_SIconToClipboard,	"Clipboard does not support Icons"
 	Consts_SDuplicateMenus,	"Menu '%s' is already being used by another form"
 	Consts_SDockedCtlNeedsName,	"Docked control must have a name"
@@ -331,7 +334,6 @@ BEGIN
 	ExtCtrls_clNameMaroon,	"Maroon"
 	ExtCtrls_clNameGreen,	"Green"
 	ExtCtrls_clNameOlive,	"Olive"
-	ExtCtrls_clNameNavy,	"Navy"
 	Consts_SmkcTab,	"Tab"
 	Consts_SmkcEsc,	"Esc"
 	Consts_SmkcEnter,	"Enter"
