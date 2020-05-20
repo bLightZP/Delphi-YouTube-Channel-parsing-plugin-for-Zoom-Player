@@ -19,7 +19,37 @@ unit misc_utils_unit;
 interface
 
 uses
-  Windows, Classes, TNTClasses;
+  Windows, Classes, TNTClasses, ShellAPI, shlobj;
+
+
+const
+  // You must obtain your own key, it's free
+  URLIdentifier     : String = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
+
+type
+  Fixed_IShellLinkW = interface(IUnknown) { sl }
+    [SID_IShellLinkW]
+    function GetPath(pszFile: PWideChar; cchMaxPath: Integer;
+      var pfd: TWin32FindDataW; fFlags: DWORD): HResult; stdcall; // was "TWin32FindData", which is wrong.
+    function GetIDList(var ppidl: PItemIDList): HResult; stdcall;
+    function SetIDList(pidl: PItemIDList): HResult; stdcall;
+    function GetDescription(pszName: PWideChar; cchMaxName: Integer): HResult; stdcall;
+    function SetDescription(pszName: PWideChar): HResult; stdcall;
+    function GetWorkingDirectory(pszDir: PWideChar; cchMaxPath: Integer): HResult; stdcall;
+    function SetWorkingDirectory(pszDir: PWideChar): HResult; stdcall;
+    function GetArguments(pszArgs: PWideChar; cchMaxPath: Integer): HResult; stdcall;
+    function SetArguments(pszArgs: PWideChar): HResult; stdcall;
+    function GetHotkey(var pwHotkey: Word): HResult; stdcall;
+    function SetHotkey(wHotkey: Word): HResult; stdcall;
+    function GetShowCmd(out piShowCmd: Integer): HResult; stdcall;
+    function SetShowCmd(iShowCmd: Integer): HResult; stdcall;
+    function GetIconLocation(pszIconPath: PWideChar; cchIconPath: Integer;
+      out piIcon: Integer): HResult; stdcall;
+    function SetIconLocation(pszIconPath: PWideChar; iIcon: Integer): HResult; stdcall;
+    function SetRelativePath(pszPathRel: PWideChar; dwReserved: DWORD): HResult; stdcall;
+    function Resolve(Wnd: HWND; fFlags: DWORD): HResult; stdcall;
+    function SetPath(pszFile: PWideChar): HResult; stdcall;
+  end;
 
 
 function  TickCount64 : Int64;
@@ -32,9 +62,15 @@ function  DownloadFileToStream(URL : String; fStream : TMemoryStream; var Status
 function  DownloadImageToFile(URL : String; ImageFilePath, ImageFileName : WideString; var Status : String; var ErrorCode: Integer; TimeOut : DWord) : Boolean; overload;
 procedure DownloadImageToFileThreaded(URL : String; ImageFilePath, ImageFileName : WideString; var Status : String; var ErrorCode: Integer; TimeOut : DWord; var SuccessCode, DownloadEnded : Boolean);
 
+function  EncodeFileName(S : WideString) : WideString;
+function  DecodeFileName(S : WideString) : WideString;
+
 function  URLEncodeUTF8(stInput : widestring) : string;
 function  HTMLUnicodeToUTF8(const AStr: String): String;
+function  EncodeURIComponent(const ASrc: string): UTF8String;
 
+function  SetRegString(BaseKey : HKey; SubKey : String; KeyEntry : String; KeyValue : String) : Boolean;
+function  GetRegString(BaseKey : HKey; SubKey : String; KeyEntry : String) : String;
 function  SetRegDWord(BaseKey : HKey; SubKey : String; KeyEntry : String; KeyValue : Integer) : Boolean;
 function  GetRegDWord(BaseKey : HKey; SubKey : String; KeyEntry : String) : Integer;
 
@@ -54,23 +90,40 @@ function  UTF8StringToWideString(Const S : UTF8String) : WideString;
 function  WideStringToUTF8String(Const S : WideString) : UTF8String;
 function  IntToStrDelimiter(iSrc : Int64; dChar : Char) : String;
 function  DosToAnsi(S: String): String;
+function  WidePosEx(SubStr, S : WideString; Offset : Cardinal = 1) : Integer;
+function  EnDeCrypt(const Value : String) : String;
+
+function  EraseFile(FileName : WideString) : Boolean;
 
 function  InputComboW(ownerWindow: THandle; const ACaption, APrompt: Widestring; const AList: TTNTStrings; var AOutput : WideString) : Boolean;
 
 procedure Split(S : String; Ch : Char; sList : TStrings); overload;
 procedure Split(S : WideString; Ch : Char; sList : TTNTStrings); overload;
 
+function  sParamCount(S : WideString) : Integer;
+function  GetSParam(PItem : Integer; PList : WideString; StripSpace : Boolean) : WideString; Overload;
+function  GetSLeftParam(S : String) : String;
+function  GetSRightParam(S : WideString; StripSpace : Boolean) : WideString;
 
+Function  ExtractFileNameNoExt(FileName : WideString) : WideString;
+function  WidePosRev(SubStr, S : WideString) : Integer;
+function  WideExtractFilePathEx(FileName : WideString) : WideString;
+function  StringToFloat(S : String) : Double;
+function  StringToFloatDef(S : String; dValue : Double) : Double;
+
+function  FileAgeW(const FileName: widestring): Integer;
+function  GetFileSize(FileName : Widestring) : Int64;
+function  WideExtractFileNameEx(FileName : WideString) : WideString;
+function  GetCurrentDLLPath : WideString;
+function  HashWideString(S : WideString) : Integer;
+
+function  WinExecAndWait32(FileName : WideString; Visibility : integer; waitforexec,console : boolean) : Integer;
+procedure GetShortCutFileName(FileName : WideString; var NewFileName,NewParameters : Widestring);
 
 implementation
 
 uses
-  SysUtils, SyncObjs, TNTSysUtils, wininet, dateutils, graphics ,forms, tntforms, stdctrls, tntStdCtrls, controls;
-
-
-const
-  // You must obtain your own key, it's free
-  URLIdentifier     : String = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
+  SysUtils, SyncObjs, TNTSysUtils, wininet, dateutils, graphics ,forms, tntforms, stdctrls, tntStdCtrls, controls, ActiveX;
 
 type
   TDownloadThread = Class(TThread)
@@ -440,6 +493,104 @@ begin
 end;
 
 
+
+function EncodeURIComponent(const ASrc: string): UTF8String;
+const
+  HexMap: UTF8String = '0123456789ABCDEF';
+
+  function IsSafeChar(ch: Integer): Boolean;
+  begin
+    if (ch >= 48) and (ch <= 57) then Result := True    // 0-9
+    else if (ch >= 65) and (ch <= 90) then Result := True  // A-Z
+    else if (ch >= 97) and (ch <= 122) then Result := True  // a-z
+    else if (ch = 33) then Result := True // !
+    else if (ch >= 39) and (ch <= 42) then Result := True // '()*
+    else if (ch >= 45) and (ch <= 46) then Result := True // -.
+    else if (ch = 95) then Result := True // _
+    else if (ch = 126) then Result := True // ~
+    else Result := False;
+  end;
+var
+  I, J: Integer;
+  ASrcUTF8: UTF8String;
+begin
+  Result := '';    {Do not Localize}
+
+  ASrcUTF8 := UTF8Encode(ASrc);
+  // UTF8Encode call not strictly necessary but
+  // prevents implicit conversion warning
+
+  I := 1; J := 1;
+  SetLength(Result, Length(ASrcUTF8) * 3); // space to %xx encode every byte
+  while I <= Length(ASrcUTF8) do
+  begin
+    if IsSafeChar(Ord(ASrcUTF8[I])) then
+    begin
+      Result[J] := ASrcUTF8[I];
+      Inc(J);
+    end
+    else if ASrcUTF8[I] = ' ' then
+    begin
+      Result[J] := '+';
+      Inc(J);
+    end
+    else
+    begin
+      Result[J] := '%';
+      Result[J+1] := HexMap[(Ord(ASrcUTF8[I]) shr 4) + 1];
+      Result[J+2] := HexMap[(Ord(ASrcUTF8[I]) and 15) + 1];
+      Inc(J,3);
+    end;
+    Inc(I);
+  end;
+
+  SetLength(Result, J-1);
+end;
+
+
+function  GetRegString(BaseKey : HKey; SubKey : String; KeyEntry : String) : String;
+var
+  RegHandle : HKey;
+  RegType   : LPDWord;
+  BufSize   : LPDWord;
+  KeyValue  : String;
+begin
+  Result := '';
+  If RegOpenKeyEx(BaseKey,PChar(SubKey),0,KEY_READ,RegHandle) = ERROR_SUCCESS then
+  Begin
+    New(RegType);
+    New(BufSize);
+    RegType^ := Reg_SZ;
+    BufSize^ := 65535;
+    SetLength(KeyValue,65535);
+    If RegQueryValueEx(RegHandle,PChar(KeyEntry),nil,RegType,@KeyValue[1],BufSize) = ERROR_SUCCESS then
+    Begin
+      If BufSize^ > 0 then SetLength(KeyValue,BufSize^-1) else KeyValue := '';
+      Result := KeyValue;
+    End;
+    Dispose(BufSize);
+    Dispose(RegType);
+    RegCloseKey(RegHandle);
+  End;
+end;
+
+
+function SetRegString(BaseKey : HKey; SubKey : String; KeyEntry : String; KeyValue : String) : Boolean;
+var
+  RegHandle : HKey;
+  S         : String;
+  I         : Integer;
+begin
+  Result := False;
+  If RegCreateKeyEx(BaseKey,PChar(SubKey),0,nil,REG_OPTION_NON_VOLATILE,KEY_ALL_ACCESS,nil,RegHandle,@I) = ERROR_SUCCESS then
+  Begin
+    If KeyValue = '' then S := #0 else S := KeyValue;
+    Result := RegSetValueEx(RegHandle,@KeyEntry[1],0,REG_SZ,@S[1],Length(S)) = ERROR_SUCCESS;
+    RegCloseKey(RegHandle);
+  End;
+end;
+
+
 function SetRegDWord(BaseKey : HKey; SubKey : String; KeyEntry : String; KeyValue : Integer) : Boolean;
 var
   RegHandle : HKey;
@@ -550,6 +701,7 @@ end;
 function EncodeTextTags(S : WideString; AddSuffix : Boolean) : WideString;
 var
   S1 : WideString;
+  I  : Integer;
 begin
   If AddSuffix = True then S1 := ';' else S1 := '';
   S := TNT_WideStringReplace(S,'&' ,'&amp'  +S1,[rfReplaceAll]);
@@ -560,6 +712,9 @@ begin
   S := TNT_WideStringReplace(S,'>' ,'&gt'   +S1,[rfReplaceAll]);
   S := TNT_WideStringReplace(S,'|' ,'&pipe' +S1,[rfReplaceAll]);
 
+
+  //for I := 1 to Length(S) do If Ord(S[I]) = $2028 then S[I] := #32;
+  for I := 1 to Length(S) do If Word(S[I]) = $2028 then S[I] := #32;
   Result := S;
 end;
 
@@ -895,8 +1050,627 @@ begin
 end;
 
 
+function EncodeFileName(S : WideString) : WideString;
+begin
+  // Invalid Chars \/:"*?<>|
+  S := TNT_WideStringReplace(S,'/' ,'&sl'    ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'\' ,'&bsl'   ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,':' ,'&colon' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'"' ,'&quot'  ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'*' ,'&star'  ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'?' ,'&qmark' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'<' ,'&lt'    ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'>' ,'&gt'    ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'|' ,'&pipe'  ,[rfReplaceAll]);
+
+  Result := S;
+end;
 
 
+function DecodeFileName(S : WideString) : WideString;
+begin
+  // Invalid Chars \/:"*?<>|
+  S := TNT_WideStringReplace(S,'&sl'    ,'/' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'&bsl'   ,'\' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'&colon' ,':' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'&quot'  ,'"' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'&star'  ,'*' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'&qmark' ,'?' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'&lt'    ,'<' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'&gt'    ,'>' ,[rfReplaceAll]);
+  S := TNT_WideStringReplace(S,'&pipe'  ,'|' ,[rfReplaceAll]);
+
+  Result := S;
+end;
+
+
+function sParamCount(S : WideString) : Integer;
+var
+  I,I1    : Integer;
+  inBlock : Boolean;
+  sLen    : Integer;
+begin
+  // fixed 06-dec-2016, no accounting for empty string
+  I1 := 0;
+  sLen := Length(S);
+  If sLen > 0 then
+  Begin
+    If Pos('"',S) > 0 then
+    Begin
+      inBlock := False;
+      For I := 1 to sLen do
+      Begin
+        If (S[I] = '"') and (I = 1) then inBlock := True
+          else
+        If (S[I] = '(') and (I < sLen) then
+        Begin
+          If S[I+1] = '"' then inBlock := True;
+        End
+          else
+        If (S[I] = ',') and (I < sLen) and (inBlock = False) then
+        Begin
+          Inc(I1);
+          If S[I+1] = '"' then inBlock := True;
+        End
+          else
+        If (inBlock = True) and (I < sLen) then
+        Begin
+          If (S[I+1] = '"') then inBlock := False;
+        End;
+      End;
+    End
+    Else For I := 1 to sLen do If S[I] = ',' then Inc(I1);
+    Result := I1+1;
+  End
+  Else Result := 0;
+end;
+
+
+function GetSParam(PItem : Integer; PList : WideString; StripSpace : Boolean) : WideString; Overload;
+var
+//  S      : WideString;
+  I,I1   : Integer;
+  iStart : Integer;
+  iEnd   : Integer;
+  pPos   : Integer;
+  pEnd   : Integer;
+  Count  : Integer;
+  sLen   : Integer;
+  inBlock: Boolean;
+begin
+  I1 := 0;
+  sLen := Length(PList);
+  For I := sLen downto 1 do If PList[I] = ')' then
+  Begin
+    I1 := I;
+    Break;
+  End;
+
+  I  := Pos('(',PList);
+  If (I > 0) and (I1 > 0) then
+  Begin
+    iStart  := I+1;  // Starting Position
+    pPos    := iStart;
+    iEnd    := I1-1; // End Position
+    Count   := 1;    // Parameter Count
+    inBlock := False;
+
+    If WidePosEx('"',PList,iStart) > 0 then // Special processing for strings
+    Begin
+      If pItem > Count then // Find Parameter Position
+      Begin
+        For I := iStart to iEnd do
+        Begin
+          If (PList[I] = '"') and (I = iStart) then inBlock := True
+            else
+          If (PList[I] = ',') and (I < sLen) and (inBlock = False) then
+          Begin
+            Inc(Count);
+            If PList[I+1] = '"' then inBlock := True;
+          End
+            else
+          If (inBlock = True) and (I < sLen) then
+          Begin
+            If (PList[I+1] = '"') then inBlock := False;
+          End;
+          If Count = PItem then
+          Begin
+            pPos := I+1;
+            Break;
+          End;
+        End;
+      End
+        else
+      Begin
+        pPos := iStart;
+        If PList[iStart] = '"' then inBlock := True;
+      End;
+      // Find End Position of Parameter
+      If inBlock = True then
+        pEnd := WidePosEx('"',PList,pPos+1) else
+        pEnd := WidePosEx(',',PList,pPos+1)-1;
+
+      If pEnd <= 0 then pEnd := iEnd; // In case this is the last Parameter
+      If (PList[pPos] = '"') and (PList[pEnd] = '"') then
+      Begin
+        Inc(pPos);
+        Dec(pEnd);
+      End;
+    End
+      else
+    Begin
+      If pItem > Count then // Find Parameter Position
+      Begin
+        For I := IStart to iEnd do If PList[I] = ',' then
+        Begin
+          Inc(Count);
+          If Count = PItem then
+          Begin
+            pPos := I+1;
+            Break;
+          End;
+        End;
+      End
+      Else pPos := iStart;
+      pEnd := WidePosEx(',',PList,pPos)-1; // Find End Position of Parameter
+      If pEnd <= 0 then pEnd := iEnd;   // In case this is the last Parameter
+    End;
+
+    If Count = PItem then
+    Begin
+      Result := Copy(PList,pPos,(pEnd+1)-pPos);
+
+      If (StripSpace = True) and (Pos(#32,Result) > 0) then
+      Begin
+        For I := 1 to Length(Result) do
+        Begin
+          iStart := I;
+          If Result[I] <> #32 then Break;
+        End;
+        For I := Length(Result) downto iStart do
+        Begin
+          iEnd := I;
+          If Result[I] <> #32 then Break;
+        End;
+        Result := Copy(Result,iStart,(iEnd+1)-iStart);
+      End
+    End
+    Else Result := '';
+  End;
+end;
+
+
+function GetSLeftParam(S : String) : String;
+var
+  sP : Integer;
+begin
+  sP := Pos('=',S)-1;
+  If sP > 0 then
+  Begin
+    Result := Trim(Copy(S,1,sP));
+  End
+  Else Result := '';
+end;
+
+function GetSRightParam(S : WideString; StripSpace : Boolean) : WideString;
+var
+  sP   : Integer;
+begin
+  sP := Pos('=',S)+1;
+  If sP > 0 then
+  Begin
+    Result := Copy(S,sP,Length(S)-(SP-1));
+    If StripSpace = True then Result := Trim(Result);
+  End
+  Else Result := '';
+end;
+
+
+function WidePosEx(SubStr, S : WideString; Offset : Cardinal = 1) : Integer;
+var
+  I,I1   : Integer;
+  subLen : Integer;
+  sLen   : Integer;
+  Found  : Boolean;
+begin
+  Result := 0;
+  subLen := Length(SubStr);
+  sLen   := Length(S);
+  If (S = '') or (SubStr = '') or (subLen > sLen) then Exit;
+  For I := Offset to sLen-(subLen-1) do
+  Begin
+    Found := True;
+    For I1 := I to I+(subLen-1) do If S[I1] <> SubStr[(I1-I)+1] then Begin Found := False; Break; End;
+    If Found = True then
+    Begin
+      Result := I;
+      Break;
+    End;
+  End;
+end;
+
+
+function EraseFile(FileName : WideString) : Boolean;
+begin
+  If Win32PlatformIsUnicode = True then
+    Result := DeleteFileW(PWideChar(FileName)) else
+    Result := DeleteFileA(PChar(String(FileName)));
+end;
+
+
+Function ExtractFileNameNoExt(FileName : WideString) : WideString;
+var
+  I : Integer;
+begin
+  If Length(FileName) > 0 then
+  Begin
+    Result := WideExtractFileName(FileName);
+    For I := Length(Result) downto 1 do If Result[I] = '.' then
+    Begin
+      If I > 1 then Result := Copy(Result,1,I-1);
+      Break;
+    End;
+  End
+  Else Result := '';
+end;
+
+
+function WidePosRev(SubStr, S : WideString) : Integer;
+var
+  I,I1   : Integer;
+  subLen : Integer;
+  sLen   : Integer;
+  Found  : Boolean;
+begin
+  Result := 0;
+  subLen := Length(SubStr);
+  sLen   := Length(S);
+  If (S = '') or (SubStr = '') or (subLen > sLen) then Exit;
+  For I := sLen-(subLen-1) downto 1 do
+  Begin
+    Found := True;
+    For I1 := I to I+(subLen-1) do If S[I1] <> SubStr[(I1-I)+1] then Begin Found := False; Break; End;
+    If Found = True then
+    Begin
+      Result := I;
+      Break;
+    End;
+  End;
+end;
+
+
+function WideExtractFilePathEx(FileName : WideString) : WideString;
+var I : Integer;
+begin
+  If Pos('//',FileName) = 1 then // Support network paths
+  Begin
+    I      := WidePosRev('/',FileName)+1;
+    Result := Copy(FileName,1,I-1);
+  End
+    else
+  Begin
+    // Check for URL
+    I := Pos('://',FileName);
+    If I > 0 then Result := Copy(FileName,1,I+2) else Result := WideExtractFilePath(FileName);
+  End;
+end;
+
+
+function StringToFloat(S : String) : Double;
+begin
+  If S <> '' then
+  Begin
+    If (Pos(',',S) > 0) and (DecimalSeparator = '.') then S[Pos(',',S)] := '.';
+    If (Pos('.',S) > 0) and (DecimalSeparator = ',') then S[Pos('.',S)] := ',';
+    Result := StrToFloat(S);
+  End
+  Else Result := 0;
+end;
+
+
+function StringToFloatDef(S : String; dValue : Double) : Double;
+begin
+  If S <> '' then
+  Begin
+    If (Pos(',',S) > 0) and (DecimalSeparator = '.') then S[Pos(',',S)] := '.';
+    If (Pos('.',S) > 0) and (DecimalSeparator = ',') then S[Pos('.',S)] := ',';
+    Result := StrToFloatDef(S,dValue);
+  End
+  Else Result := 0;
+end;
+
+
+function FileAgeW(const FileName: widestring): Integer;
+var
+  Handle        : THandle;
+  FindDataW     : TWin32FindDataW;
+  FindDataA     : TWin32FindDataA;
+  LocalFileTime : TFileTime;
+begin
+  If Win32PlatformIsUnicode then
+    Handle := FindFirstFileW(PWideChar(FileName), FindDataW) else
+    Handle := FindFirstFileA(PChar(String(FileName)), FindDataA);
+  if Handle <> INVALID_HANDLE_VALUE then
+  begin
+    Windows.FindClose(Handle);
+    If Win32PlatformIsUnicode then
+    Begin
+      If (FindDataW.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then
+      Begin
+        FileTimeToLocalFileTime(FindDataW.ftLastWriteTime, LocalFileTime);
+        If FileTimeToDosDateTime(LocalFileTime, LongRec(Result).Hi,LongRec(Result).Lo) then Exit;
+      End;
+    End
+      else
+    Begin
+      If (FindDataA.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then
+      begin
+        FileTimeToLocalFileTime(FindDataA.ftLastWriteTime, LocalFileTime);
+        If FileTimeToDosDateTime(LocalFileTime, LongRec(Result).Hi,LongRec(Result).Lo) then Exit;
+      end;
+    End;
+  end;
+  Result := -1;
+end;
+
+
+function GetFileSize(FileName : Widestring) : Int64;
+var
+  sRec : TSearchRecW;
+  nLen : Integer;
+  FFileHandle: THandle;
+  i64  : Int64;
+  fData : WIN32_FILE_ATTRIBUTE_DATA;
+begin
+  Result := -1;
+  nLen := Length(FileName);
+  If (nLen > 0) then
+  Begin
+    If Char(FileName[nLen]) in ['\','/'] then FileName := Copy(FileName,1,nLen-1);
+    If Win32PlatformIsUnicode = False then
+    Begin
+      If GetFileAttributesExA(PChar(String(FileName)),GetFileExInfoStandard,@fData) = True then
+        If fData.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY = 0 then
+      Begin
+        Int64Rec(Result).Lo := fData.nFileSizeLow;
+        Int64Rec(Result).Hi := fData.nFileSizeHigh;
+      End;
+    End
+      else
+    Begin
+      If GetFileAttributesExW(PWideChar(FileName),GetFileExInfoStandard,@fData) = True then
+        If fData.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY = 0 then
+      Begin
+        Int64Rec(Result).Lo := fData.nFileSizeLow;
+        Int64Rec(Result).Hi := fData.nFileSizeHigh;
+      End;
+    End;
+  End;
+end;
+
+
+function WideExtractFileNameEx(FileName : WideString) : WideString;
+var I,I1,iLen : Integer;
+begin
+  If Pos('//',FileName) = 1 then // Support network paths
+  Begin
+    I      := WidePosRev('/',FileName)+1;
+    Result := Copy(FileName,I,Length(FileName)-(I-1));
+  End
+    else
+  Begin
+    I := Pos('://',FileName);
+    If I > 0 then
+    Begin
+      I1 := WidePosRev('/',FileName);
+      iLen := Length(FileName);
+      If (I1 > 0) and (I1 <> iLen) then
+      Begin
+        // File name in path
+        Result := Copy(FileName,I1+1,iLen-(I1));
+      End
+        else
+      Begin
+        // Full URL Path
+        Result := Copy(FileName,I+3,Length(FileName)-(I+2))
+      End;
+    End
+    Else Result := WideExtractFileName(FileName);
+  End;
+end;
+
+
+function GetCurrentDLLPath : WideString;
+var
+  szFileNameA : Array[0..MAX_PATH] of Char;
+  szFileNameW : Array[0..MAX_PATH] of WideChar;
+  I           : Integer;
+
+begin
+  If Win32PlatformIsUnicode = True then
+  Begin
+    FillChar(szFileNameW, SizeOf(szFileNameW), #0);
+    GetModuleFileNameW(hInstance, szFileNameW, MAX_PATH);
+    Result := WideExtractFilePath(szFileNameW);
+  End
+    else
+  Begin
+    FillChar(szFileNameA, SizeOf(szFileNameA), #0);
+    GetModuleFileNameA(hInstance, szFileNameA, MAX_PATH);
+    Result := ExtractFilePath(szFileNameA);
+  End;
+  I := Length(Result);
+  If I > 0 then If Result[I] <> '\' then Result := Result+'\';
+end;
+
+
+function HashWideString(S : WideString) : Integer;
+var
+  I : Integer;
+  P : PByteArray;
+  Len : Integer;
+begin
+  Result := 0;
+  //S := TNT_WideLowercase(S);
+  Len := Length(S);
+  If Win32PlatformIsUnicode = False then
+    S := TNT_WideLowercase(S) else
+    CharLowerBuffW{TNT-ALLOW CharLowerBuffW}(@S[1], Len);
+
+  P := @S[1];
+  For I := 0 to (Len shl 1)-1 do
+    Result := ((Result shl 2) or (Result shr ((4{SizeOf(Result)} shl 3)-2))) xor P[I];
+end;
+
+
+Function WinExecAndWait32(FileName : WideString; Visibility : integer; waitforexec,console : boolean):integer;
+var
+  FileNameA   : String;
+  //WorkDir     : WideString;
+  StartupInfo : TStartupInfo;
+  ProcessInfo : TProcessInformation;
+  RunResult   : LongBool;
+  ECResult    : LongWord;
+  Flags       : DWord;
+  S,S1        : WideString;
+begin
+  //GetDirWide(WorkDir);
+  If WideCompareText(WideExtractFileExt(FileName),'.lnk') = 0 then
+  Begin
+    GetShortCutFileName(FileName,S,S1);
+    If S <> '' then FileName := S;
+  End;
+
+
+  FillChar(StartupInfo,Sizeof(StartupInfo),0);
+  StartupInfo.cb          := Sizeof(StartupInfo);
+  StartupInfo.dwFlags     := STARTF_USESHOWWINDOW;
+  StartupInfo.wShowWindow := Visibility;
+  If Console then Flags := CREATE_NEW_CONSOLE or NORMAL_PRIORITY_CLASS else Flags := NORMAL_PRIORITY_CLASS;
+
+  If Win32PlatformIsUnicode = True then
+  Begin
+    FileName := FileName+#0;
+    RunResult :=
+      CreateProcessW(nil,
+      @FileName[1],                  { pointer to command line string }
+      nil,                           { pointer to process security attributes }
+      nil,                           { pointer to thread security attributes }
+      false,                         { handle inheritance flag }
+      Flags,                         { creation flags }
+      nil,                           { pointer to new environment block }
+      nil,                           { pointer to current directory name }
+      StartupInfo,                   { pointer to STARTUPINFO }
+      ProcessInfo);                  { pointer to PROCESS_INF }
+  End
+    else
+  Begin
+    FileNameA := FileName+#0;
+    RunResult :=
+      CreateProcessA(nil,
+      @FileNameA[1],                 { pointer to command line string }
+      nil,                           { pointer to process security attributes }
+      nil,                           { pointer to thread security attributes }
+      false,                         { handle inheritance flag }
+      flags,                         { creation flags }
+      nil,                           { pointer to new environment block }
+      nil,                           { pointer to current directory name }
+      StartupInfo,                   { pointer to STARTUPINFO }
+      ProcessInfo);                  { pointer to PROCESS_INF }
+  End;
+  If RunResult = False then Result := -1 else
+  Begin
+    If WaitForExec = True then
+    Begin
+      WaitforSingleObject(ProcessInfo.hProcess,INFINITE);
+      GetExitCodeProcess(ProcessInfo.hProcess,ECResult);
+      Result := ECResult;
+    End
+    Else Result := 0;
+    CloseHandle(ProcessInfo.hProcess);
+    CloseHandle(ProcessInfo.hThread);
+  end;
+end;
+
+
+
+procedure GetShortCutFileName(FileName : WideString; var NewFileName,NewParameters : Widestring);
+var
+  //LinkObj   : IUnknown;
+  LinkIntA  : IShellLinkA;
+  LinkIntW  : Fixed_IShellLinkW;
+  LinkFile  : IPersistFile;
+  //FileBufA  : Array[0..MAX_PATH] of Char;
+  //FileBufW  : Array[0..MAX_PATH] of PWideChar;
+  FindDataA : TWin32FindDataA;
+  FindDataW : TWin32FindDataW;
+  sW        : WideString;
+  sA        : String;
+begin
+  If WideFileExists(FileName) = True then
+  Begin
+    NewFileName   := FileName;
+    NewParameters := '';
+    If Win32PlatformIsUnicode = False then
+    Begin
+      If CoCreateInstance(CLSID_ShellLink, nil, CLSCTX_INPROC_SERVER,IShellLinkA, LinkIntA) = S_OK then
+      Begin
+        LinkFile  := LinkIntA as IPersistFile;
+        If LinkFile.Load(PWideChar(FileName),STGM_READ) = S_OK then
+        Begin
+          SetLength(sA,MAX_PATH);
+          If LinkIntA.GetPath(@sA[1],MAX_PATH,FindDataA,SLGP_UNCPRIORITY) = NOERROR then
+          Begin
+            SetLength(sA,Pos(#0,sA)-1);
+            NewFileName := sA;
+          End;
+          SetLength(sA,MAX_PATH);
+          If LinkIntA.GetArguments(@sA[1],MAX_PATH) = NOERROR then
+          Begin
+            SetLength(sA,Pos(#0,sA)-1);
+            NewParameters := sA;
+          End;
+        End;
+        LinkIntA := nil;
+        LinkFile := nil;
+      End;
+    End
+      else
+    Begin
+      If CoCreateInstance(CLSID_ShellLink, nil, CLSCTX_INPROC_SERVER,IID_IShellLinkW, LinkIntW) = S_OK then
+      Begin
+        LinkFile  := LinkIntW as IPersistFile;
+        If LinkFile.Load(PWideChar(FileName),STGM_READ) = S_OK then
+        Begin
+          SetLength(sW,MAX_PATH);
+          If LinkIntW.GetPath(@sW[1],MAX_PATH,FindDataW,SLGP_UNCPRIORITY) = NOERROR then
+          Begin
+            SetLength(sW,Pos(#0,sW)-1);
+            NewFileName := sW;
+          End;
+          SetLength(sW,MAX_PATH);
+          If LinkIntW.GetArguments(@sW[1],MAX_PATH) = NOERROR then
+          Begin
+            SetLength(sW,Pos(#0,sW)-1);
+            NewParameters := sW;
+          End;
+        End;
+        LinkIntW := nil;
+        LinkFile := nil;
+      End;
+    End;
+  End;
+end;
+
+
+function EnDeCrypt(const Value : String) : String;
+var
+  CharIndex : integer;
+begin
+  Result := Value;
+  for CharIndex := 1 to Length(Value) do
+    Result[CharIndex] := chr(not(ord(Value[CharIndex])));
+end;
 
 
 initialization

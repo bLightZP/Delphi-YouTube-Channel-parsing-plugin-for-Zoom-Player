@@ -12,10 +12,13 @@ const
   LogInit : String = 'c:\log\.YouYube_Channel_plugin.txt';
   {$ENDIF}
 
+var
+  APIKey  : String = '';
+
 function  YouTube_ConvertUserNameToChannelID(sUserName : String) : String;
-procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID : String);
+procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID : String; MaxThumbnailRes : Boolean);
 procedure YouTube_GetCategoryIDs(regionCode : String; uList : TTNTStringList);
-function  YouTube_GetBestThumbnailURL(jSnippet : ISuperObject) : String;
+function  YouTube_GetBestThumbnailURL(jSnippet : ISuperObject; MaxThumbnailRes : Boolean) : String;
 function  YouTube_ISO8601toSeconds(sISO : String) : Integer;
 
 
@@ -97,7 +100,7 @@ begin
 end;}
 
 
-procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID : String);
+procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID : String; MaxThumbnailRes : Boolean);
 var
   sList      : TStringList;
   jBase      : ISuperObject;
@@ -140,7 +143,7 @@ begin
                 sTitle := EncodeTextTags(jSnippet.S['title'],True);
                 {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel Title: '+UTF8Decode(sTitle));{$ENDIF}
 
-                sThumbnail := YouTube_GetBestThumbnailURL(jSnippet);
+                sThumbnail := YouTube_GetBestThumbnailURL(jSnippet,MaxThumbnailRes);
                 {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel Thumbnail: '+UTF8Decode(sThumbnail));{$ENDIF}
                 jSnippet.Clear(True);
                 jSnippet := nil;
@@ -148,7 +151,7 @@ begin
               {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON snippet object returned nil'){$ENDIF};
 
               // Get upload playlist ID - problematic, doesn't return videos by publish date
-              (*
+              //{$IFDEF USEUPLOADPLAYLIST}
               jSnippet := jEntry.O['contentDetails'];
               If jSnippet <> nil then
               Begin
@@ -165,7 +168,7 @@ begin
                 jSnippet := nil;
               End
               {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON object returned nil for "contentDetails"'){$ENDIF};
-              *)
+              //{$ENDIF}
 
               jEntry.Clear(True);
               jEntry := nil;
@@ -260,7 +263,7 @@ begin
 end;
 
 
-function YouTube_GetBestThumbnailURL(jSnippet : ISuperObject) : String;
+function YouTube_GetBestThumbnailURL(jSnippet : ISuperObject; MaxThumbnailRes : Boolean) : String;
 var
   jThumb      : ISuperObject;
   jThumbRez   : ISuperObject;
@@ -270,7 +273,7 @@ begin
   jThumbRez := jSnippet.O['thumbnails'];
   If jThumbRez <> nil then
   Begin
-    jThumb := jThumbRez.O['maxres'];
+    If MaxThumbnailRes = True then jThumb := jThumbRez.O['maxres'] else jThumb := nil;
     If jThumb = nil then jThumb := jThumbRez.O['standard'];
     If jThumb = nil then jThumb := jThumbRez.O['high'];
     If jThumb = nil then jThumb := jThumbRez.O['medium'];
@@ -325,5 +328,26 @@ begin
   Result := (iHour*3600)+(iMin*60)+iSec;
 end;
 
+
+
+
+
+{
+//original:
+https://www.googleapis.com/youtube/v3/channels?key=[APIKEY]&part=snippet,contentDetails&id=[ChannelID]
+
+//Here is the URL request for retrieve the "upload" playlist id from the channel_id previously mentioned:
+https://www.googleapis.com/youtube/v3/channels?key=<APIKEY>&part=id,snippet,contentDetails&fields=items(contentDetails/relatedPlaylists,uploads,snippet/localized)&id=UCT2rZIAL-zNqeK1OmLLUa6g
+
+
+//original:
+https://www.googleapis.com/youtube/v3/playlistItems?key=[APIKey]&playlistId=[PlaylistID]&part=snippet,id&order=date&type=video&maxResults=25
+
+//Once retrieved the uploads value (as specified in previous lines), now it's time to use the "playlistItems" API for build the following URL:
+https://www.googleapis.com/youtube/v3/playlistItems?key=<APIKEY>&playlistId=[PlaylistID]&part=snippet,contentDetails&fields=items(contentDetails(videoId,videoPublishedAt),snippet/title,status)&maxResults=25
+
+https://www.googleapis.com/youtube/v3/playlistItems?key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&playlistId=UU1yBKRuGpC1tSM73A0ZjYjQ&part=snippet,contentDetails&fields=items(contentDetails(videoId,videoPublishedAt),snippet/title,status)&maxResults=25
+
+}
 
 end.
