@@ -373,6 +373,7 @@ var
   uStr        : WideString;
   nEntry      : PUploadPlaylistIDRecord;
   Found       : Boolean;
+  iOfs        : Integer;
 
 begin
   // CategoryInput = URL
@@ -466,25 +467,33 @@ begin
   If sCatInput <> '' then
   Begin
     // Try to find the Channel ID by input URL
+    iOfs := 10;
     sPos := Pos('/channel/',sCatInputLC);
+
     If sPos > 0 then
     Begin
-      ePos := PosEx('/',sCatInput,sPos+10);
+      ePos := PosEx('/',sCatInput,sPos+iOfs);
       If ePos > 0 then
-        sChannelID := Copy(sCatInput,sPos+9,ePos-(sPos+9)) else
-        sChannelID := Copy(sCatInput,sPos+9,Length(sCatInput)-(sPos+8));
+        sChannelID := Copy(sCatInput,sPos+(iOfs-1),ePos-(sPos+(iOfs-1))) else
+        sChannelID := Copy(sCatInput,sPos+(iOfs-1),Length(sCatInput)-(sPos+(iOfs-2)));
     End
       else
     Begin
       // Try to find the Channel ID by user name in input URL
       {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Convert User Name to Channel ID');{$ENDIF}
+      iOfs := 7;
       sPos := Pos('/user/',sCatInputLC);
+      If sPos = 0 then
+      Begin
+        iOfs := 4;
+        sPos := Pos('/c/',sCatInputLC);
+      End;  
       If sPos > 0 then
       Begin
-        ePos := PosEx('/',sCatInput,sPos+7);
+        ePos := PosEx('/',sCatInput,sPos+iOfs);
         If ePos > 0 then
-          sUserName := Copy(sCatInput,sPos+6,ePos-(sPos+6)) else
-          sUserName := Copy(sCatInput,sPos+6,Length(sCatInput)-(sPos+5));
+          sUserName := Copy(sCatInput,sPos+(iOfs-1),ePos-(sPos+(iOfs-1))) else
+          sUserName := Copy(sCatInput,sPos+(iOfs-1),Length(sCatInput)-(sPos+(iOfs-2)));
 
         {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'User Name: '+sUserName);{$ENDIF}
         If sUserName <> '' then sChannelID := YouTube_ConvertUserNameToChannelID(sUserName);
