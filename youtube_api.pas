@@ -16,6 +16,7 @@ var
   APIKey  : String = '';
 
 function  YouTube_ConvertUserNameToChannelID(sUserName : String) : String;
+function  YouTube_ConvertChannelNameToChannelID(sChannelName : String) : String;
 procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID : String; MaxThumbnailRes : Boolean);
 procedure YouTube_GetCategoryIDs(regionCode : String; uList : TTNTStringList);
 function  YouTube_GetBestThumbnailURL(jSnippet : ISuperObject; MaxThumbnailRes : Boolean) : String;
@@ -29,6 +30,74 @@ implementation
 uses classes, WinInet, misc_utils_unit, sysutils, TNTSysUtils;
 
 
+function YouTube_ConvertChannelNameToChannelID(sChannelName : String) : String;
+var
+  sList    : TStringList;
+  jBase    : ISuperObject;
+  jItems   : ISuperObject;
+  jEntry   : ISuperObject;
+  dlStatus : String;
+  dlError  : Integer;
+  sJSON    : String;
+  sURL     : String;
+  jID      : ISuperObject;
+begin
+  Result   := '';
+  sList    := TStringList.Create;
+  dlStatus := '';
+  dlError  := 0;
+ // https://developers.google.com/apis-explorer/#p/youtube/v3/youtube.search.list?part=snippet&q=YouTube+for+Developers&type=channel
+  sURL := 'https://www.googleapis.com/youtube/v3/search?key='+APIKEY+'&part=id&q='+sChannelName+'&type=channel';
+  //sURL := 'https://www.googleapis.com/youtube/v3/search?key='+APIKEY+'&part=id,snippet&q='+sChannelName+'&type=channel';
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'YouTube_ConvertChannelNameToChannelID "'+sURL+'"');{$ENDIF}
+  If DownloadFileToStringList(sURL,sList,dlStatus,dlError,2000) = True then
+  Begin
+    If sList.Count > 0 then
+    Begin
+      sJSON := StringReplace(sList.Text,CRLF,'',[rfReplaceAll]);
+      {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'JSON Returned : '+CRLF+'---'+CRLF+sList.Text+CRLF+'---'+CRLF);{$ENDIF}
+      jBase := SO(sJSON);
+      If jBase <> nil then
+      Begin
+        jItems := jBase.O['items'];
+        If jItems <> nil then
+        Begin
+          If jItems.AsArray.Length > 0 then
+          Begin
+            jEntry := jItems.AsArray.O[0];
+            If jEntry <> nil then
+            Begin
+              ///Result := jEntry.S['id'];
+              jID := jEntry.O['id'];
+              If jID <> nil then
+              Begin
+                Result := jID.S['channelId'];
+                jID.Clear(True);
+                jID := nil;
+              End
+              {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON id object returned nil'){$ENDIF};
+              jEntry.Clear(True);
+              jEntry := nil;
+            End
+            {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON entry object returned nil'){$ENDIF};
+          End;
+          jItems.Clear(True);
+          jItems := nil;
+          //ShowMessageW(jItems.AsString);
+        End
+        {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON items object returned nil'){$ENDIF};
+        jBase.Clear(True);
+        jBase := nil;
+      End
+      {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON base object returned nil'){$ENDIF};
+    End
+    {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download returned no data on User Name to Channel ID translation'){$ENDIF};
+  End
+  {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download error on User Name to Channel ID translation'){$ENDIF};
+  sList.Free;
+end;
+
+
 function YouTube_ConvertUserNameToChannelID(sUserName : String) : String;
 var
   sList    : TStringList;
@@ -38,17 +107,20 @@ var
   dlStatus : String;
   dlError  : Integer;
   sJSON    : String;
+  sURL     : String;
 begin
   Result   := '';
   sList    := TStringList.Create;
   dlStatus := '';
   dlError  := 0;
-  If DownloadFileToStringList('https://www.googleapis.com/youtube/v3/channels?key='+APIKEY+'&forUsername='+sUserName+'&part=id',sList,dlStatus,dlError,2000) = True then
+  sURL     := 'https://www.googleapis.com/youtube/v3/channels?key='+APIKEY+'&forUsername='+sUserName+'&part=id';
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'YouTube_ConvertUserNameToChannelID "'+sURL+'"');{$ENDIF}
+  If DownloadFileToStringList(sURL,sList,dlStatus,dlError,2000) = True then
   Begin
     If sList.Count > 0 then
     Begin
       sJSON := StringReplace(sList.Text,CRLF,'',[rfReplaceAll]);
-      {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'JSON User Name : '+CRLF+'---'+CRLF+sList.Text+CRLF+'---'+CRLF);{$ENDIF}
+      {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'JSON Returned : '+CRLF+'---'+CRLF+sList.Text+CRLF+'---'+CRLF);{$ENDIF}
       jBase := SO(sJSON);
       If jBase <> nil then
       Begin

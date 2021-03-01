@@ -262,6 +262,7 @@ begin
   ConfigForm.ClearCacheButton.Enabled    := UploadPlaylistList.Count > 0;
 
   ConfigForm.IncludeNoDurationCB.Checked := bIncludeZeroDuration;
+  ConfigForm.MaxThumbnailResCB.Checked   := bMaxThumbnailRes;
   ConfigForm.APIKeyEdit.Text             := sCustomAPIKey;
 
   If ConfigForm.ShowModal = mrOK then
@@ -273,6 +274,8 @@ begin
       SetRegDWord(HKEY_CURRENT_USER,PluginRegKey,RegKeyChannelStrategy,iChannelStrategy);
     End;
     bIncludeZeroDuration := ConfigForm.IncludeNoDurationCB.Checked;
+    bMaxThumbnailRes     := ConfigForm.MaxThumbnailResCB.Checked;
+
     SetRegDWord(HKEY_CURRENT_USER,PluginRegKey,RegKeyZeroDuration,Integer(bIncludeZeroDuration));
     SetRegDWord(HKEY_CURRENT_USER,PluginRegKey,RegKeyMaxThumbnailRes,Integer(bMaxThumbnailRes));
 
@@ -356,24 +359,29 @@ end;
 
 
 Function CreateCategory(CenterOnWindow : HWND; CategoryData : PCategoryPluginRecord) : Integer; stdcall;
+const
+  urlTypeNone    = 0;
+  urlTypeUser    = 1;
+  urlTypeChannel = 2;
 var
-  sCatInput   : String;
-  sCatInputLC : String;
-  sChannelID  : String;
-  sPlaylistID : String;
-  sTitle      : String;
-  sThumbnail  : String;
-  sCatID      : String;
-  sUserName   : WideString;
-  sPos        : Integer;
-  ePos        : Integer;
-  I,I1        : Integer;
-  sList       : TStringList;
-  uList       : TTNTStringList;
-  uStr        : WideString;
-  nEntry      : PUploadPlaylistIDRecord;
-  Found       : Boolean;
-  iOfs        : Integer;
+  sCatInput      : String;
+  sCatInputLC    : String;
+  sChannelID     : String;
+  sPlaylistID    : String;
+  sTitle         : String;
+  sThumbnail     : String;
+  sCatID         : String;
+  sUserName      : WideString;
+  sPos           : Integer;
+  ePos           : Integer;
+  I,I1           : Integer;
+  sList          : TStringList;
+  uList          : TTNTStringList;
+  uStr           : WideString;
+  nEntry         : PUploadPlaylistIDRecord;
+  Found          : Boolean;
+  iOfs           : Integer;
+  urlType        : Integer;
 
 begin
   // CategoryInput = URL
@@ -407,135 +415,158 @@ begin
   CategoryData^.DefaultFlags  := catFlagThumbView or catFlagThumbCrop or catFlagTitleFromMetaData or catFlagNoFormatOverlay;
 
   {$IFDEF SEARCHMODE}
-  // **********************************************************************************
-  // ********************************* YouTube Search *********************************
-  // **********************************************************************************
-  CategoryData^.CategoryID    := PChar(sCatInput);
-  CategoryData^.CategoryTitle := PChar('Search:'+sCatInput);
-  CategoryData^.CategoryThumb := PChar(UTF8Encode(GetCurrentDLLPath)+'YouTube_Search.jpg');
-  Result := S_OK;
-  {$ELSE}
+    // **********************************************************************************
+    // ********************************* YouTube Search *********************************
+    // **********************************************************************************
 
-  {$IFDEF TRENDINGMODE}
-  // **********************************************************************************
-  // ********************************* YouTube Trends *********************************
-  // **********************************************************************************
-  If sCatInput = strWorldWide then
-  Begin
-    sCatID := strWorldWide;
-  End
-    else
-  // Convert language name to ISO 3166-1 alpha-2 code
-  For I := 0 to ISO_3166_1_alpha_2_Count-1 do If sCatInput = ISO_3166_1_alpha_2_str[I] then
-  Begin
-    sCatID := ISO_3166_1_alpha_2[I];
-    Break;
-  End;
-  uList := TTNTStringList.Create;
-
-  If sCatID <> strWorldWide then
-  Begin
-    // YouTube category lists only work per-country, it doesn't work globally
-    YouTube_GetCategoryIDs(sCatID,uList);
-  End;
-
-  uStr := '';
-  uList.InsertObject(0,strEverything,TObject(-1));
-  If misc_utils_unit.InputComboW(CenterOnWindow,'Category :', '', uList,uStr) = True then
-  Begin
-    For I := 0 to uList.Count-1 do If uStr = uList[I] then
-    Begin
-      sCatID := sCatID+','+IntToStr(Integer(uList.Objects[I]));
-      CategoryData^.CategoryTitle := PChar(UTF8Encode(EncodeTextTags('Trending: '+uList[I]+' in '+sCatInput,True)));
-      Break;
-    End;
-    CategoryData^.CategoryID    := PChar(sCatID);
-    CategoryData^.CategoryThumb := PChar(UTF8Encode(GetCurrentDLLPath)+'YouTube_Trending.jpg');
+    CategoryData^.CategoryID    := PChar(sCatInput);
+    CategoryData^.CategoryTitle := PChar('Search:'+sCatInput);
+    CategoryData^.CategoryThumb := PChar(UTF8Encode(GetCurrentDLLPath)+'YouTube_Search.jpg');
     Result := S_OK;
-  End
-  Else Result := S_FALSE; // prevents an error dialog, used for "cancel".
-
-  uList.Free;
-
-  // Get list of automatically generated video categories
-  // https://www.googleapis.com/youtube/v3/videoCategories?part=snippet&regionCode=IL&key=API_KEY
   {$ELSE}
+    {$IFDEF TRENDINGMODE}
+      // **********************************************************************************
+      // ********************************* YouTube Trends *********************************
+      // **********************************************************************************
 
-  // ***********************************************************************************
-  // ********************************* YouTube Channel *********************************
-  // ***********************************************************************************
-  If sCatInput <> '' then
-  Begin
-    // Try to find the Channel ID by input URL
-    iOfs := 10;
-    sPos := Pos('/channel/',sCatInputLC);
-
-    If sPos > 0 then
-    Begin
-      ePos := PosEx('/',sCatInput,sPos+iOfs);
-      If ePos > 0 then
-        sChannelID := Copy(sCatInput,sPos+(iOfs-1),ePos-(sPos+(iOfs-1))) else
-        sChannelID := Copy(sCatInput,sPos+(iOfs-1),Length(sCatInput)-(sPos+(iOfs-2)));
-    End
-      else
-    Begin
-      // Try to find the Channel ID by user name in input URL
-      {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Convert User Name to Channel ID');{$ENDIF}
-      iOfs := 7;
-      sPos := Pos('/user/',sCatInputLC);
-      If sPos = 0 then
+      If sCatInput = strWorldWide then
       Begin
-        iOfs := 4;
-        sPos := Pos('/c/',sCatInputLC);
-      End;  
-      If sPos > 0 then
+        sCatID := strWorldWide;
+      End
+        else
+      // Convert language name to ISO 3166-1 alpha-2 code
+      For I := 0 to ISO_3166_1_alpha_2_Count-1 do If sCatInput = ISO_3166_1_alpha_2_str[I] then
       Begin
-        ePos := PosEx('/',sCatInput,sPos+iOfs);
-        If ePos > 0 then
-          sUserName := Copy(sCatInput,sPos+(iOfs-1),ePos-(sPos+(iOfs-1))) else
-          sUserName := Copy(sCatInput,sPos+(iOfs-1),Length(sCatInput)-(sPos+(iOfs-2)));
-
-        {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'User Name: '+sUserName);{$ENDIF}
-        If sUserName <> '' then sChannelID := YouTube_ConvertUserNameToChannelID(sUserName);
-      End;
-    End;
-
-    If sChannelID <> '' then
-    Begin
-      {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel ID: '+sChannelID);{$ENDIF}
-
-      // Get Channel Title, Thumbnail & Upload playlist ID
-      YouTube_GetChannelDetails(sChannelID,sTitle,sThumbnail,sPlaylistID,bMaxThumbnailRes);
-
-      CategoryData^.CategoryID := PChar(sChannelID);
-
-      // Check if we have the UploadID cached
-      Found := False;
-      For I := 0 to UploadPlaylistList.Count-1 do If PUploadPlaylistIDRecord(UploadPlaylistList[I])^.sChannelID = sChannelID then
-      Begin
-        Found := True;
+        sCatID := ISO_3166_1_alpha_2[I];
         Break;
       End;
+      uList := TTNTStringList.Create;
 
-      // If UploadID is not cached, add it to the cache.
-      If Found = False then
+      If sCatID <> strWorldWide then
       Begin
-        New(nEntry);
-        nEntry^.sChannelID  := sChannelID;
-        nEntry^.sPlaylistID := sPlaylistID;
-        UploadPlaylistList.Add(nEntry);
+        // YouTube category lists only work per-country, it doesn't work globally
+        YouTube_GetCategoryIDs(sCatID,uList);
       End;
 
-      If sTitle <> '' then
+      uStr := '';
+      uList.InsertObject(0,strEverything,TObject(-1));
+      If misc_utils_unit.InputComboW(CenterOnWindow,'Category :', '', uList,uStr) = True then
       Begin
-        CategoryData^.CategoryTitle := PChar(sTitle);
-        If sThumbnail <> '' then CategoryData^.CategoryThumb := PChar(sThumbnail);
+        For I := 0 to uList.Count-1 do If uStr = uList[I] then
+        Begin
+          sCatID := sCatID+','+IntToStr(Integer(uList.Objects[I]));
+          CategoryData^.CategoryTitle := PChar(UTF8Encode(EncodeTextTags('Trending: '+uList[I]+' in '+sCatInput,True)));
+          Break;
+        End;
+        CategoryData^.CategoryID    := PChar(sCatID);
+        CategoryData^.CategoryThumb := PChar(UTF8Encode(GetCurrentDLLPath)+'YouTube_Trending.jpg');
         Result := S_OK;
-      End;
-    End
-    {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'No Channel ID detected'){$ENDIF};
-  End;
-  {$ENDIF}{$ENDIF}
+      End
+      Else Result := S_FALSE; // prevents an error dialog, used for "cancel".
+
+      uList.Free;
+
+      // Get list of automatically generated video categories
+      // https://www.googleapis.com/youtube/v3/videoCategories?part=snippet&regionCode=IL&key=API_KEY
+    {$ELSE}
+      {$IFDEF PLAYLISTMODE}
+        // ***********************************************************************************
+        // ******************************** YouTube PlayList *********************************
+        // ***********************************************************************************
+        sCatID := Trim(sCatInput);
+        I := Pos('?list=',Lowercase(sCatID));
+        If I > 0 then
+        Begin
+          sCatID := Copy(sCatID,I+6,Length(sCatID)-(I+5));
+          CategoryData^.CategoryID    := PChar(sCatID);
+          CategoryData^.CategoryThumb := PChar(UTF8Encode(GetCurrentDLLPath)+'YouTube_Playlist.jpg');
+          Result := S_OK;
+        End;
+      {$ELSE}
+        // ***********************************************************************************
+        // ********************************* YouTube Channel *********************************
+        // ***********************************************************************************
+
+        If sCatInput <> '' then
+        Begin
+          // Try to find the Channel ID by input URL
+          iOfs := 10;
+          sPos := Pos('/channel/',sCatInputLC);
+
+          If sPos > 0 then
+          Begin
+            ePos := PosEx('/',sCatInput,sPos+iOfs);
+            If ePos > 0 then
+              sChannelID := Copy(sCatInput,sPos+(iOfs-1),ePos-(sPos+(iOfs-1))) else
+              sChannelID := Copy(sCatInput,sPos+(iOfs-1),Length(sCatInput)-(sPos+(iOfs-2)));
+          End
+            else
+          Begin
+            // Try to find the Channel ID by user name in input URL
+            {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Convert User Name to Channel ID');{$ENDIF}
+            urlType := urlTypeNone;
+            iOfs    := 7;
+            sPos    := Pos('/user/',sCatInputLC);
+            If sPos = 0 then
+            Begin
+              iOfs := 4;
+              sPos := Pos('/c/',sCatInputLC);
+              If sPos > 0 then urlType := urlTypeChannel;
+            End
+            Else urlType := urlTypeUser;
+            If sPos > 0 then
+            Begin
+              ePos := PosEx('/',sCatInput,sPos+iOfs);
+              If ePos > 0 then
+                sUserName := Copy(sCatInput,sPos+(iOfs-1),ePos-(sPos+(iOfs-1))) else
+                sUserName := Copy(sCatInput,sPos+(iOfs-1),Length(sCatInput)-(sPos+(iOfs-2)));
+
+              {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'User Name: '+sUserName);{$ENDIF}
+              Case urlType of
+                urlTypeUser    : If sUserName <> '' then sChannelID := YouTube_ConvertUserNameToChannelID(sUserName);
+                urlTypeChannel : If sUserName <> '' then sChannelID := YouTube_ConvertChannelNameToChannelID(sUserName);
+              End;
+            End;
+          End;
+
+          If sChannelID <> '' then
+          Begin
+            {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel ID: '+sChannelID);{$ENDIF}
+
+            // Get Channel Title, Thumbnail & Upload playlist ID
+            YouTube_GetChannelDetails(sChannelID,sTitle,sThumbnail,sPlaylistID,bMaxThumbnailRes);
+
+            CategoryData^.CategoryID := PChar(sChannelID);
+
+            // Check if we have the UploadID cached
+            Found := False;
+            For I := 0 to UploadPlaylistList.Count-1 do If PUploadPlaylistIDRecord(UploadPlaylistList[I])^.sChannelID = sChannelID then
+            Begin
+              Found := True;
+              Break;
+            End;
+
+            // If UploadID is not cached, add it to the cache.
+            If Found = False then
+            Begin
+              New(nEntry);
+              nEntry^.sChannelID  := sChannelID;
+              nEntry^.sPlaylistID := sPlaylistID;
+              UploadPlaylistList.Add(nEntry);
+            End;
+
+            If sTitle <> '' then
+            Begin
+              CategoryData^.CategoryTitle := PChar(sTitle);
+              If sThumbnail <> '' then CategoryData^.CategoryThumb := PChar(sThumbnail);
+              Result := S_OK;
+            End;
+          End
+          {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'No Channel ID detected'){$ENDIF};
+        End;
+      {$ENDIF}
+    {$ENDIF}
+  {$ENDIF}
 
   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'CreateCategory, Result : '+IntToHex(Result,8)+' (after)');{$ENDIF}
 end;
@@ -595,6 +626,8 @@ var
   xThumbnail  : String;
   xTitle      : String;
   nEntry      : PUploadPlaylistIDRecord;
+  tz          : TTimeZoneInformation;
+  TZBias      : Integer;
   {$IFDEF TRENDINGMODE}
   iCatType    : Integer;
   sCatRegion  : String;
@@ -642,7 +675,7 @@ var
       0    : sPath := 'https://www.youtube.com/watch?v='+Entry^.ytvPath;
       else   sPath := Entry^.ytvPath;
     End;
-    If Entry^.ytvPublished > 0 then sDate := TimeDifferenceToStr(Now,Entry^.ytvPublished) else sDate := '';
+    If Entry^.ytvPublished > 0 then sDate := TimeDifferenceToStr(IncMillisecond(Now,TZBias),Entry^.ytvPublished) else sDate := '';
 
         // #9/TAB is used for right-alignment of text
     sMetaLikes :=
@@ -711,74 +744,95 @@ begin
   sList       := TStringList.Create;
   ytvList     := TList.Create;
   sPlaylistID := '';
+
+  // Get Timezone information
+  If GetTimeZoneInformation(tz) = TIME_ZONE_ID_DAYLIGHT then
+  Begin
+    TZBias := (tz.Bias+tz.DaylightBias)*60000;
+  End
+  Else TZBias := tz.Bias*60000;
+
+
   {$IFDEF SEARCHMODE}
-  // *********************
-  // **** Search mode ****
-  // *********************
-  //https://www.googleapis.com/youtube/v3/search?part=snippet,id&q=[Search]&type=video&key={YOUR_API_KEY}
-  sURL    := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&q='+URLEncodeUTF8(UTF8Decode(CategoryID))+'&part=snippet,id&order=relevance&type=video&maxResults='+IntToStr(YouTube_VideoFetchSearch);
-  //ShowMessageW(CategoryID+' / '+UTF8Decode(CategoryID)+' / '+ URLEncodeUTF8(UTF8Decode(S)));
+    // ******************************************************************
+    // ************************** Search mode ***************************
+    // ******************************************************************
+
+    //https://www.googleapis.com/youtube/v3/search?part=snippet,id&q=[Search]&type=video&key={YOUR_API_KEY}
+    sURL    := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&q='+URLEncodeUTF8(UTF8Decode(CategoryID))+'&part=snippet,id&order=relevance&type=video&maxResults='+IntToStr(YouTube_VideoFetchSearch);
+    //ShowMessageW(CategoryID+' / '+UTF8Decode(CategoryID)+' / '+ URLEncodeUTF8(UTF8Decode(S)));
   {$ELSE}
+
     {$IFDEF TRENDINGMODE}
-    // ******************
-    // **** Trending ****
-    // ******************
-    S := CategoryID;
-    I := Pos(',',S);
-    If I > 0 then
-    Begin
-      iCatType   := StrToIntDef(Copy(S,I+1,Length(S)-I),-1);
-      sCatRegion := Copy(S,1,I-1);
-    End
-      else
-    Begin
-      iCatType   := -1;
-      sCatRegion := S;
-    End;
+      // ******************************************************************
+      // **************************** Trending ****************************
+      // ******************************************************************
 
-    // Trending in country with specific category
-    //https://www.googleapis.com/youtube/v3/videos?part=contentDetails&chart=mostPopular&videoCategoryId=10&maxResults=25&key=API_KEY
+      S := CategoryID;
+      I := Pos(',',S);
+      If I > 0 then
+      Begin
+        iCatType   := StrToIntDef(Copy(S,I+1,Length(S)-I),-1);
+        sCatRegion := Copy(S,1,I-1);
+      End
+        else
+      Begin
+        iCatType   := -1;
+        sCatRegion := S;
+      End;
 
-    // Trending in country
-    //https://www.googleapis.com/youtube/v3/videos?part=contentDetails&chart=mostPopular&regionCode=IN&maxResults=25&key=API_KEY
-    If sCatRegion <> strWorldwide then S := '&regionCode='+sCatRegion else S := '';
-    If iCatType > -1 then S := S+'&videoCategoryId='+IntToStr(iCatType);
-    sURL    := 'https://www.googleapis.com/youtube/v3/videos?part=snippet,id&chart=mostPopular'+S+'&maxResults='+IntToStr(YouTube_VideoFetchSearch)+'&key='+APIKey;
+      // Trending in country with specific category
+      //https://www.googleapis.com/youtube/v3/videos?part=contentDetails&chart=mostPopular&videoCategoryId=10&maxResults=25&key=API_KEY
+
+      // Trending in country
+      //https://www.googleapis.com/youtube/v3/videos?part=contentDetails&chart=mostPopular&regionCode=IN&maxResults=25&key=API_KEY
+      If sCatRegion <> strWorldwide then S := '&regionCode='+sCatRegion else S := '';
+      If iCatType > -1 then S := S+'&videoCategoryId='+IntToStr(iCatType);
+      sURL    := 'https://www.googleapis.com/youtube/v3/videos?part=snippet,id&chart=mostPopular'+S+'&maxResults='+IntToStr(YouTube_VideoFetchSearch)+'&key='+APIKey;
     {$ELSE}
-    // ******************************************************************
-    // ************************** Channel List **************************
-    // ******************************************************************
-    S := CategoryID;
 
-    Case iChannelStrategy of
-      0 : // Search
-      Begin
-        sURL := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&channelId='+S+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetchSearch);
-      End;
-      1 : // 'Upload' playlist
-      Begin
-        // Find the 'upload' playlist ID
-        For I := 0 to UploadPlaylistList.Count-1 do If S = PUploadPlaylistIDRecord(UploadPlaylistList[I])^.sChannelID then
-        Begin
-          // Match found
-          sPlaylistID := PUploadPlaylistIDRecord(UploadPlaylistList[I])^.sPlaylistID;
-          Break;
+      {$IFDEF PLAYLISTMODE}
+        // ******************************************************************
+        // **************************** Play List ***************************
+        // ******************************************************************
+        sURL := 'https://www.googleapis.com/youtube/v3/playlistItems?key='+APIKey+'&playlistId='+CategoryID+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetchUpload);
+        sPlaylistID := CategoryID;
+      {$ELSE}
+        // ******************************************************************
+        // ************************** Channel List **************************
+        // ******************************************************************
+
+        S := CategoryID;
+
+        Case iChannelStrategy of
+          0 : // Search
+          Begin
+            sURL := 'https://www.googleapis.com/youtube/v3/search?key='+APIKey+'&channelId='+S+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetchSearch);
+          End;
+          1 : // 'Upload' playlist
+          Begin
+            // Find the 'upload' playlist ID
+            For I := 0 to UploadPlaylistList.Count-1 do If S = PUploadPlaylistIDRecord(UploadPlaylistList[I])^.sChannelID then
+            Begin
+              // Match found
+              sPlaylistID := PUploadPlaylistIDRecord(UploadPlaylistList[I])^.sPlaylistID;
+              Break;
+            End;
+
+            // No Upload PlaylistID, try getting again.
+            If sPlaylistID = '' then
+            Begin
+              YouTube_GetChannelDetails(S,xTitle,xThumbnail,sPlaylistID,bMaxThumbnailRes);
+              New(nEntry);
+              nEntry^.sChannelID  := S;
+              nEntry^.sPlaylistID := sPlaylistID;
+              UploadPlaylistList.Add(nEntry)
+            End;
+
+            sURL := 'https://www.googleapis.com/youtube/v3/playlistItems?key='+APIKey+'&playlistId='+sPlaylistID+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetchUpload);
+          End;
         End;
-
-        // No Upload PlaylistID, try getting again.
-        If sPlaylistID = '' then
-        Begin
-          YouTube_GetChannelDetails(S,xTitle,xThumbnail,sPlaylistID,bMaxThumbnailRes);
-          New(nEntry);
-          nEntry^.sChannelID  := S;
-          nEntry^.sPlaylistID := sPlaylistID;
-          UploadPlaylistList.Add(nEntry)
-        End;
-
-        sURL := 'https://www.googleapis.com/youtube/v3/playlistItems?key='+APIKey+'&playlistId='+sPlaylistID+'&part=snippet,id&order=date&type=video&maxResults='+IntToStr(YouTube_VideoFetchUpload);
-      End;
-    End;
-
+      {$ENDIF}
     {$ENDIF}
   {$ENDIF}
   sToken  := CategoryPath;
@@ -1162,7 +1216,11 @@ begin
     sList.Free;
     Result := PChar(S);
     {$ELSE}
-    Result := 'Enter YouTube channel URL :';
+      {$IFDEF PLAYLISTMODE}
+        Result := 'Enter YouTube playlist URL :';
+      {$ELSE}
+        Result := 'Enter YouTube channel URL :';
+      {$ENDIF}
     {$ENDIF}
   {$ENDIF}
 end;
@@ -1171,13 +1229,21 @@ end;
 // The string to display for the users when asking for input, in our case, a youtube channel URL
 function RequireTitle : Bool; stdcall;
 begin
-  Result := False;
+  {$IFDEF PLAYLISTMODE}
+    Result := True;
+  {$ELSE}
+    Result := False;
+  {$ENDIF}
 end;
 
 
 function RequireInput : Bool; stdcall;
 begin
-  Result := False;
+  {$IFDEF PLAYLISTMODE}
+    Result := True;
+  {$ELSE}
+    Result := False;
+  {$ENDIF}
 end;
 
 
