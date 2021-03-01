@@ -10,5 +10,5 @@ This Zoom Player plugin uses the YouTube data API to:<br>
 </ol>
 <font size=-1>
   <br>
-YOUTUBE_PLUGIN_DEFINES.INC includes the compiler directives to switch between the multiple Plugin modes (Channel/Search/Trending/etc...)
+YOUTUBE_PLUGIN_DEFINES.INC includes the compiler directives to switch between the multiple Plugin modes (Channel/Search/Trending/Playlist/etc...)
 </font>
