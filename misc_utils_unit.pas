@@ -79,7 +79,7 @@ function  ConvertCharsToSpaces(S : WideString) : WideString;
 
 function  DecodeTextTags(S : WideString; RemoveSuffix : Boolean) : WideString;
 function  EncodeTextTags(S : WideString; AddSuffix : Boolean) : WideString;
-
+function  EncodePipe(S : WideString; AddSuffix : Boolean) : WideString;
 function  StripURLHash(sURL : String) : String;
 
 procedure FileExtIntoStringList(fPath,fExt : WideString; fList : TTNTStrings; Recursive : Boolean);
@@ -714,6 +714,18 @@ begin
 
 
   //for I := 1 to Length(S) do If Ord(S[I]) = $2028 then S[I] := #32;
+  for I := 1 to Length(S) do If Word(S[I]) = $2028 then S[I] := #32;
+  Result := S;
+end;
+
+
+function EncodePipe(S : WideString; AddSuffix : Boolean) : WideString;
+var
+  S1 : WideString;
+  I  : Integer;
+begin
+  If AddSuffix = True then S1 := ';' else S1 := '';
+  S := TNT_WideStringReplace(S,'|' ,'&pipe' +S1,[rfReplaceAll]);
   for I := 1 to Length(S) do If Word(S[I]) = $2028 then S[I] := #32;
   Result := S;
 end;

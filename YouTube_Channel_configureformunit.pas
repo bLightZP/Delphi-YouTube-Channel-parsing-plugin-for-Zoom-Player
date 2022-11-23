@@ -12,17 +12,21 @@ type
   TConfigForm = class(TForm)
     OKButton: TButton;
     CancelButton: TButton;
-    Label1: TLabel;
+    LabelChannelStrategy: TLabel;
     ChannelStrategyCB: TComboBox;
     ClearCacheButton: TButton;
     IncludeNoDurationCB: TCheckBox;
     MaxThumbnailResCB: TCheckBox;
-    Label2: TLabel;
+    LabelCustomAPIKey: TLabel;
     APIKeyEdit: TEdit;
+    LabelYouTubeTerms: TLabel;
+    LabelGooglePrivacyPolicy: TLabel;
     procedure FormKeyPress(Sender: TObject; var Key: Char);
     procedure edtMinMediaNameLengthForScrapingByNameKeyPress(
       Sender: TObject; var Key: Char);
     procedure ClearCacheButtonClick(Sender: TObject);
+    procedure LabelYouTubeTermsClick(Sender: TObject);
+    procedure LabelGooglePrivacyPolicyClick(Sender: TObject);
   private
     { Private declarations }
   public
@@ -45,6 +49,8 @@ var
 implementation
 
 {$R *.dfm}
+
+uses shellapi;
 
 procedure TConfigForm.FormKeyPress(Sender: TObject; var Key: Char);
 begin
@@ -71,6 +77,19 @@ begin
 
   ClearCacheButton.Enabled := False;
 end;
+
+
+procedure TConfigForm.LabelYouTubeTermsClick(Sender: TObject);
+begin
+  ShellExecute(0,'open','https://www.youtube.com/t/terms',nil,nil,0);
+end;
+
+
+procedure TConfigForm.LabelGooglePrivacyPolicyClick(Sender: TObject);
+begin
+  ShellExecute(0,'open','https://policies.google.com/privacy',nil,nil,0);
+end;
+
 
 end.
 

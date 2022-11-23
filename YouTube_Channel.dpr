@@ -292,7 +292,7 @@ end;
 function CanRefresh : Bool; stdcall;
 begin
   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'CanRefresh (before)');{$ENDIF}
-  {$IF DEFINED(SEARCHMODE) or DEFINED(TRENDINGMODE)}   // YouTube Search Plugin
+  {$IF DEFINED(SEARCHMODE) or DEFINED(TRENDINGMODE) or DEFINED(PLAYLISTMODE)}   // YouTube Search Plugin
   Result := False;
   {$ELSE}
   Result := True;
@@ -474,10 +474,16 @@ begin
         // ******************************** YouTube PlayList *********************************
         // ***********************************************************************************
         sCatID := Trim(sCatInput);
+
         I := Pos('?list=',Lowercase(sCatID));
+        If I = 0 then I := Pos('&list=',Lowercase(sCatID));
         If I > 0 then
         Begin
-          sCatID := Copy(sCatID,I+6,Length(sCatID)-(I+5));
+          I1 := PosEx('&',Lowercase(sCatID),I+1)-1;
+          If I1 <= 0 then I1 := Length(sCatID);
+
+          sCatID := Copy(sCatID,I+6,I1-(I+5));
+
           CategoryData^.CategoryID    := PChar(sCatID);
           CategoryData^.CategoryThumb := PChar(UTF8Encode(GetCurrentDLLPath)+'YouTube_Playlist.jpg');
           Result := S_OK;
@@ -514,6 +520,7 @@ begin
               If sPos > 0 then urlType := urlTypeChannel;
             End
             Else urlType := urlTypeUser;
+
             If sPos > 0 then
             Begin
               ePos := PosEx('/',sCatInput,sPos+iOfs);
@@ -526,6 +533,20 @@ begin
                 urlTypeUser    : If sUserName <> '' then sChannelID := YouTube_ConvertUserNameToChannelID(sUserName);
                 urlTypeChannel : If sUserName <> '' then sChannelID := YouTube_ConvertChannelNameToChannelID(sUserName);
               End;
+            End
+              else
+            Begin
+               // 20-nov-2022
+               // Channel with @ identifier
+               sPos := Pos('/@',sCatInputLC);
+               If sPos > 0 then
+               Begin
+                 iOfs := PosEx('/',sCatInputLC,sPos+2);
+                 If iOfs = 0 then
+                   sUserName := Copy(sCatInput,sPos+2,Length(sCatInput)-(sPos+2)) else
+                   sUserName := Copy(sCatInput,sPos+2,iOfs-(sPos+2));
+                 sChannelID := YouTube_ConvertChannelNameToChannelID(sUserName);
+               End;
             End;
           End;
 
@@ -592,7 +613,7 @@ type
     ytvDuration     : Integer;
     ytvViewCount    : Integer;
     ytvLikeCount    : Integer;
-    ytvDislikeCount : Integer;
+    //ytvDislikeCount : Integer;
   End;
   PYouTubeVideoRecord = ^TYouTubeVideoRecord;
 
@@ -659,7 +680,7 @@ var
     ytvEntry^.ytvDuration     := 0;
     ytvEntry^.ytvViewCount    := 0;
     ytvEntry^.ytvLikeCount    := 0;
-    ytvEntry^.ytvDislikeCount := 0;
+    //ytvEntry^.ytvDislikeCount := 0;
   end;
 
   function YTVrecordToString(Entry : PYouTubeVideoRecord) : WideString;
@@ -680,8 +701,8 @@ var
         // #9/TAB is used for right-alignment of text
     sMetaLikes :=
       IntToStrDelimiter(Entry^.ytvViewCount   ,',')+' views\n\n'+
-      IntToStrDelimiter(Entry^.ytvLikeCount   ,',')+' likes\n\n'+
-      IntToStrDelimiter(Entry^.ytvDislikeCount,',')+' dislikes';
+      IntToStrDelimiter(Entry^.ytvLikeCount   ,',')+' likes'{+
+      IntToStrDelimiter(Entry^.ytvDislikeCount,',')+' dislikes'};
 
     //If Entry^.ytvChannelName <> '' then sMetaLikes := Entry^.ytvChannelName+'\n\n'+sMetaLikes;
 
@@ -691,8 +712,8 @@ var
 
     // Generate a rating value based on ratio between likes and dislikes
     iMetaRating := 0;
-    If Entry^.ytvLikeCount+Entry^.ytvDislikeCount > 0 then
-      iMetaRating := Round((100*Entry^.ytvLikeCount)/(Entry^.ytvLikeCount+Entry^.ytvDislikeCount));
+    {If Entry^.ytvLikeCount+Entry^.ytvDislikeCount > 0 then
+      iMetaRating := Round((100*Entry^.ytvLikeCount)/(Entry^.ytvLikeCount+Entry^.ytvDislikeCount));}
 
     // [MetaEntry1]  :  // Displayed in the meta-data's Title area
     // [MetaEntry2]  :  // Displayed in the meta-data's Date area
@@ -882,13 +903,15 @@ begin
               Begin
                 //{$IF Defined(TRENDINGMODE) or Defined(SEARCHMODE)}
                 //ytvEntry^.ytvChannelName := UTF8StringToWideString(jSnippet.S['channelTitle']);
-                ytvEntry^.ytvChannelName := UTF8StringToWideString(HTMLUnicodeToUTF8(jSnippet.S['channelTitle']));
+                ytvEntry^.ytvChannelName := EncodePipe(UTF8StringToWideString(HTMLUnicodeToUTF8(jSnippet.S['channelTitle'])),True);
+                If ytvEntry^.ytvChannelName = '' then ytvEntry^.ytvChannelName := EncodePipe(UTF8StringToWideString(jSnippet.S['channelTitle']),True);
+                //{$IFDEF LOCALTRACE}DebugMsgFT('c:\log\youtube_channel_name.txt',jSnippet.S['channelTitle']+' -> '+ytvEntry^.ytvChannelName);{$ENDIF}
                 //{$IFEND}
 
                 //ytvEntry^.ytvTitle       := UTF8StringToWideString(jSnippet.S['title']);
                 //ytvEntry^.ytvDescription := UTF8StringToWideString(jSnippet.S['description']);
-                ytvEntry^.ytvTitle       := UTF8StringToWideString(HTMLUnicodeToUTF8(jSnippet.S['title']));
-                ytvEntry^.ytvDescription := UTF8StringToWideString(HTMLUnicodeToUTF8(jSnippet.S['description']));
+                ytvEntry^.ytvTitle       := EncodePipe(UTF8StringToWideString(HTMLUnicodeToUTF8(jSnippet.S['title'])),True);
+                ytvEntry^.ytvDescription := EncodePipe(UTF8StringToWideString(HTMLUnicodeToUTF8(jSnippet.S['description'])),True);
 
                 S := jSnippet.S['publishedAt'];
                 Try
@@ -925,9 +948,9 @@ begin
                 ytvEntry^.ytvDescription := UTF8StringToWideString(HTMLUnicodeToUTF8(jSnippet.S['description']));}
 
                 // HTMLUnicodeToUTF8 does not work here, the text is not encoded like the search method.
-                ytvEntry^.ytvChannelName := UTF8StringToWideString(jSnippet.S['channelTitle']);
-                ytvEntry^.ytvTitle       := UTF8StringToWideString(jSnippet.S['title']);
-                ytvEntry^.ytvDescription := UTF8StringToWideString(jSnippet.S['description']);
+                ytvEntry^.ytvChannelName := EncodePipe(UTF8StringToWideString(jSnippet.S['channelTitle']),True);
+                ytvEntry^.ytvTitle       := EncodePipe(UTF8StringToWideString(jSnippet.S['title']),True);
+                ytvEntry^.ytvDescription := EncodePipe(UTF8StringToWideString(jSnippet.S['description']),True);
 
 
                 S := jSnippet.S['publishedAt'];
@@ -1082,7 +1105,7 @@ begin
                 Begin
                   PYouTubeVideoRecord(ytvList[I1])^.ytvViewCount    := jSnippet.I['viewCount'];
                   PYouTubeVideoRecord(ytvList[I1])^.ytvLikeCount    := jSnippet.I['likeCount'];
-                  PYouTubeVideoRecord(ytvList[I1])^.ytvDislikeCount := jSnippet.I['dislikeCount'];
+                  //PYouTubeVideoRecord(ytvList[I1])^.ytvDislikeCount := jSnippet.I['dislikeCount'];
                   jSnippet.Clear(True);
                   jSnippet := nil;
                 End
@@ -1127,40 +1150,43 @@ begin
   End;
 
   mStream := TMemoryStream.Create;
-  For I := 0 to ytvList.Count-1 do If ((PYouTubeVideoRecord(ytvList[I])^.ytvDuration > 0) or (bIncludeZeroDuration = True)) or (PYouTubeVideoRecord(ytvList[I])^.ytvType <> 0) then
+  If ytvList.Count > 0 then
   Begin
-    If I = 0 then
-      sUTF8 := UTF8Encode(YTVrecordToString(PYouTubeVideoRecord(ytvList[I]))) else
-      sUTF8 := '|'+UTF8Encode(YTVrecordToString(PYouTubeVideoRecord(ytvList[I])));
-      //sItemList := YTVrecordToString(PYouTubeVideoRecord(ytvList[I])) else
-      //sItemList := sItemList+'|'+YTVrecordToString(PYouTubeVideoRecord(ytvList[I]));
-
-    mStream.Write(sUTF8[1],Length(sUTF8));
-
-    {$IFDEF LOCALTRACE}
-    With PYouTubeVideoRecord(ytvList[I])^ do
+    For I := 0 to ytvList.Count-1 do If ((PYouTubeVideoRecord(ytvList[I])^.ytvDuration > 0) or (bIncludeZeroDuration = True)) or (PYouTubeVideoRecord(ytvList[I])^.ytvType <> 0) then
     Begin
-      DebugMsgFT  (LogInit,'Type         : '+IntToStr(ytvType));
-      If ytvType = 0 then
+      If I = 0 then
+        sUTF8 := UTF8Encode(YTVrecordToString(PYouTubeVideoRecord(ytvList[I]))) else
+        sUTF8 := '|'+UTF8Encode(YTVrecordToString(PYouTubeVideoRecord(ytvList[I])));
+        //sItemList := YTVrecordToString(PYouTubeVideoRecord(ytvList[I])) else
+        //sItemList := sItemList+'|'+YTVrecordToString(PYouTubeVideoRecord(ytvList[I]));
+
+      mStream.Write(sUTF8[1],Length(sUTF8));
+
+      {$IFDEF LOCALTRACE}
+      With PYouTubeVideoRecord(ytvList[I])^ do
       Begin
-        DebugMsgFT(LogInit,'Path         : https://www.youtube.com/watch?v='+ytvPath);
-        DebugMsgFT(LogInit,'Title        : '+ytvTitle);
-        DebugMsgFT(LogInit,'Description  : '+ytvDescription);
-        DebugMsgFT(LogInit,'Thumbnail    : '+ytvThumbnail);
-        DebugMsgFT(LogInit,'ViewCount    : '+IntToStr(ytvViewCount));
-        DebugMsgFT(LogInit,'LikeCount    : '+IntToStr(ytvLikeCount));
-        DebugMsgFT(LogInit,'DislikeCount : '+IntToStr(ytvDislikeCount));
-        DebugMsgFT(LogInit,'Duration     : '+IntToStr(ytvDuration)+' seconds');
-        If ytvPublished > 0 then
-          DebugMsgFT(LogInit,'Published    : '+DateTimeToStr(ytvPublished)+CRLF) else
-          DebugMsgFT(LogInit,'Published    : Unknown!'+CRLF);
-      End
-        else
-      Begin
-        DebugMsgFT(LogInit,'Path         : '+ytvPath+CRLF);
+        DebugMsgFT  (LogInit,'Type         : '+IntToStr(ytvType));
+        If ytvType = 0 then
+        Begin
+          DebugMsgFT(LogInit,'Path         : https://www.youtube.com/watch?v='+ytvPath);
+          DebugMsgFT(LogInit,'Title        : '+ytvTitle);
+          DebugMsgFT(LogInit,'Description  : '+ytvDescription);
+          DebugMsgFT(LogInit,'Thumbnail    : '+ytvThumbnail);
+          DebugMsgFT(LogInit,'ViewCount    : '+IntToStr(ytvViewCount));
+          DebugMsgFT(LogInit,'LikeCount    : '+IntToStr(ytvLikeCount));
+          //DebugMsgFT(LogInit,'DislikeCount : '+IntToStr(ytvDislikeCount));
+          DebugMsgFT(LogInit,'Duration     : '+IntToStr(ytvDuration)+' seconds');
+          If ytvPublished > 0 then
+            DebugMsgFT(LogInit,'Published    : '+DateTimeToStr(ytvPublished)+CRLF) else
+            DebugMsgFT(LogInit,'Published    : Unknown!'+CRLF);
+        End
+          else
+        Begin
+          DebugMsgFT(LogInit,'Path         : '+ytvPath+CRLF);
+        End;
       End;
+      {$ENDIF}
     End;
-    {$ENDIF}
   End;
 
   //sUTF8 := UTF8Encode(sItemList);
