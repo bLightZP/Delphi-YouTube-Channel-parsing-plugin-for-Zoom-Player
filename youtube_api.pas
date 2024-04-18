@@ -17,7 +17,8 @@ var
 
 function  YouTube_ConvertUserNameToChannelID(sUserName : String) : String;
 function  YouTube_ConvertChannelNameToChannelID(sChannelName : String) : String;
-procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID : String; MaxThumbnailRes : Boolean);
+procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID,sCustomURL : String; MaxThumbnailRes : Boolean);
+function  YouTube_MatchCustomURL(sChannelIDs,sCustomURL : String) : String;
 procedure YouTube_GetCategoryIDs(regionCode : String; uList : TTNTStringList);
 function  YouTube_GetBestThumbnailURL(jSnippet : ISuperObject; MaxThumbnailRes : Boolean) : String;
 function  YouTube_ISO8601toSeconds(sISO : String) : Integer;
@@ -41,13 +42,18 @@ var
   sJSON    : String;
   sURL     : String;
   jID      : ISuperObject;
+  sID      : String;
+  idList   : TStringList;
+  I        : Integer;
 begin
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'YouTube_ConvertChannelNameToChannelID "'+sChannelName+'" (before)');{$ENDIF}
   Result   := '';
   sList    := TStringList.Create;
+  idList   := TStringList.Create;
   dlStatus := '';
   dlError  := 0;
- // https://developers.google.com/apis-explorer/#p/youtube/v3/youtube.search.list?part=snippet&q=YouTube+for+Developers&type=channel
-  sURL := 'https://www.googleapis.com/youtube/v3/search?key='+APIKEY+'&part=id&q='+sChannelName+'&type=channel';
+  // https://developers.google.com/apis-explorer/#p/youtube/v3/youtube.search.list?part=snippet&q=YouTube+for+Developers&type=channel
+  sURL := 'https://www.googleapis.com/youtube/v3/search?key='+APIKEY+'&part=id&q='+sChannelName+'&type=channel&maxResults=50';
   //sURL := 'https://www.googleapis.com/youtube/v3/search?key='+APIKEY+'&part=id,snippet&q='+sChannelName+'&type=channel';
   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'YouTube_ConvertChannelNameToChannelID "'+sURL+'"');{$ENDIF}
   If DownloadFileToStringList(sURL,sList,dlStatus,dlError,2000) = True then
@@ -62,16 +68,18 @@ begin
         jItems := jBase.O['items'];
         If jItems <> nil then
         Begin
-          If jItems.AsArray.Length > 0 then
+          If jItems.AsArray.Length > 0 then For I := 0 to jItems.AsArray.Length-1 do
           Begin
-            jEntry := jItems.AsArray.O[0];
+            jEntry := jItems.AsArray.O[I];
             If jEntry <> nil then
             Begin
               ///Result := jEntry.S['id'];
               jID := jEntry.O['id'];
               If jID <> nil then
               Begin
-                Result := jID.S['channelId'];
+                sID := jID.S['channelId'];
+                {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Found Channel ID "'+sID+'"');{$ENDIF}
+                If sID <> '' then idList.Add(sID);
                 jID.Clear(True);
                 jID := nil;
               End
@@ -94,7 +102,110 @@ begin
     {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download returned no data on User Name to Channel ID translation'){$ENDIF};
   End
   {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download error on User Name to Channel ID translation'){$ENDIF};
+
+  If idList.Count > 1 then
+  Begin
+    // Multiple matching channels found
+    {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Found "'+IntToStr(idList.Count)+'" candidates');{$ENDIF}
+    For I := 0 to idList.Count-1 do
+      If I = 0 then sID := idList[I] else sID := sID+','+idList[I];
+
+    If sChannelName[1] = '@' then
+    Begin
+      // Try to match CustomURL field
+      Result := YouTube_MatchCustomURL(sID,sChannelName);
+      If Result = '' then Result := idList[0];
+    End
+    Else Result := idList[0];
+  End
+  Else If idList.Count = 1 then Result := idList[0];
+
   sList.Free;
+  idList.Free;
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'YouTube_ConvertChannelNameToChannelID (after)');{$ENDIF}
+end;
+
+
+function YouTube_MatchCustomURL(sChannelIDs,sCustomURL : String) : String;
+var
+  sList      : TStringList;
+  jBase      : ISuperObject;
+  jItems     : ISuperObject;
+  jEntry     : ISuperObject;
+  jSnippet   : ISuperObject;
+  dlStatus   : String;
+  dlError    : Integer;
+  sJSON      : String;
+  cCustomURL : String;
+  cID        : String;
+  I          : Integer;
+begin
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'YouTube_MatchCustomURL "'+sChannelIDs+'" -> "'+sCustomURL+'" (before)');{$ENDIF}
+  Result := '';
+  sList  := TStringList.Create;
+
+  // https://www.googleapis.com/youtube/v3/channels?key=[Key]&part=snippet&id=UC09c9KqTC9IZV4G8qrDqsKw,UCe9nZ_-4PbLDKdjaGe4qMdA
+  If DownloadFileToStringList('https://www.googleapis.com/youtube/v3/channels?key='+APIKEY+'&part=snippet&id='+sChannelIDs,sList,dlStatus,dlError,2000) = True then
+  Begin
+    If sList.Count > 0 then
+    Begin
+      sJSON := StringReplace(sList.Text,CRLF,'',[rfReplaceAll]);
+      {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'JSON Channel Snippet : '+CRLF+'---'+CRLF+sList.Text+CRLF+'---'+CRLF);{$ENDIF}
+      jBase := SO(sJSON);
+      If jBase <> nil then
+      Begin
+        jItems := jBase.O['items'];
+        If jItems <> nil then
+        Begin
+          If jItems.AsArray.Length > 0 then For I := 0 to jItems.AsArray.Length-1 do
+          Begin
+            jEntry := jItems.AsArray.O[I];
+            If jEntry <> nil then
+            Begin
+              // Get Channel ID
+              cID := jEntry.S['id'];
+
+              // Get Custom URL
+              jSnippet := jEntry.O['snippet'];
+              If jSnippet <> nil then
+              Begin
+                cCustomURL := jSnippet.S['customUrl'];
+                {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Custom URL: '+cCustomURL);{$ENDIF}
+
+                jSnippet.Clear(True);
+                jSnippet := nil;
+              End
+              {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON snippet object returned nil'){$ENDIF};
+
+
+              jEntry.Clear(True);
+              jEntry := nil;
+            End
+            {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON entry object returned nil'){$ENDIF};
+
+            If sCustomURL = cCustomURL then
+            Begin
+              {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Match found');{$ENDIF}
+              Result := cID;
+              Break;
+            End;
+          End;
+          jItems.Clear(True);
+          jItems := nil;
+        End
+        {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON items object returned nil for "items"'){$ENDIF};
+
+        jBase.Clear(True);
+        jBase := nil;
+      End
+      {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON base object returned nil'){$ENDIF};
+    End
+    {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download returned no data on User Name to Channel ID translation'){$ENDIF};
+  End
+  {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'Download error on Channel ID to Channel Name translation'){$ENDIF};
+
+  sList.Free;
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'YouTube_MatchCustomURL (after)');{$ENDIF}
 end;
 
 
@@ -172,7 +283,7 @@ begin
 end;}
 
 
-procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID : String; MaxThumbnailRes : Boolean);
+procedure YouTube_GetChannelDetails(sChannelID : String; var sTitle,sThumbnail,sPlaylistID,sCustomURL : String; MaxThumbnailRes : Boolean);
 var
   sList      : TStringList;
   jBase      : ISuperObject;
@@ -214,6 +325,9 @@ begin
               Begin
                 sTitle := EncodeTextTags(jSnippet.S['title'],True);
                 {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel Title: '+UTF8Decode(sTitle));{$ENDIF}
+
+                sCustomURL := jSnippet.S['customUrl'];
+                {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel URL: '+UTF8Decode(sCustomURL));{$ENDIF}
 
                 sThumbnail := YouTube_GetBestThumbnailURL(jSnippet,MaxThumbnailRes);
                 {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel Thumbnail: '+UTF8Decode(sThumbnail));{$ENDIF}

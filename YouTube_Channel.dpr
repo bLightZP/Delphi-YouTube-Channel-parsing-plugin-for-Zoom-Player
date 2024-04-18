@@ -308,6 +308,7 @@ var
   sTitle      : String;
   sPlaylistID : String;
   sThumbnail  : String;
+  sCustomURL  : String;
   I           : Integer;
 begin
   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Refresh (before)');{$ENDIF}
@@ -338,7 +339,7 @@ begin
     If I > 0 then sCatInput := Copy(sCatInput,1,I-1);
 
     // Get Channel Title, Thumbnail & Upload playlist ID
-    YouTube_GetChannelDetails(sCatInput,sTitle,sThumbnail,sPlaylistID,bMaxThumbnailRes);
+    YouTube_GetChannelDetails(sCatInput,sTitle,sThumbnail,sPlaylistID,sCustomURL,bMaxThumbnailRes);
 
     // was used for alternative method of downloading youtube videos, sadly it returned them in a bad order.
     If sPlaylistID <> '' then
@@ -369,6 +370,7 @@ var
   sChannelID     : String;
   sPlaylistID    : String;
   sTitle         : String;
+  sCustomURL     : String;
   sThumbnail     : String;
   sCatID         : String;
   sUserName      : WideString;
@@ -541,10 +543,10 @@ begin
                sPos := Pos('/@',sCatInputLC);
                If sPos > 0 then
                Begin
-                 iOfs := PosEx('/',sCatInputLC,sPos+2);
+                 iOfs := PosEx('/',sCatInputLC,sPos+1);
                  If iOfs = 0 then
-                   sUserName := Copy(sCatInput,sPos+2,Length(sCatInput)-(sPos+2)) else
-                   sUserName := Copy(sCatInput,sPos+2,iOfs-(sPos+2));
+                   sUserName := Copy(sCatInput,sPos+1,Length(sCatInput)-(sPos)) else
+                   sUserName := Copy(sCatInput,sPos+1,iOfs-(sPos));
                  sChannelID := YouTube_ConvertChannelNameToChannelID(sUserName);
                End;
             End;
@@ -555,7 +557,7 @@ begin
             {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Channel ID: '+sChannelID);{$ENDIF}
 
             // Get Channel Title, Thumbnail & Upload playlist ID
-            YouTube_GetChannelDetails(sChannelID,sTitle,sThumbnail,sPlaylistID,bMaxThumbnailRes);
+            YouTube_GetChannelDetails(sChannelID,sTitle,sThumbnail,sPlaylistID,sCustomURL,bMaxThumbnailRes);
 
             CategoryData^.CategoryID := PChar(sChannelID);
 
@@ -643,6 +645,7 @@ var
   ytvList     : TList;
   ytvEntry    : PYouTubeVideoRecord;
   mStream     : TMemoryStream;
+  sCustomURL  : String;
   sPlaylistID : String;
   xThumbnail  : String;
   xTitle      : String;
@@ -843,7 +846,7 @@ begin
             // No Upload PlaylistID, try getting again.
             If sPlaylistID = '' then
             Begin
-              YouTube_GetChannelDetails(S,xTitle,xThumbnail,sPlaylistID,bMaxThumbnailRes);
+              YouTube_GetChannelDetails(S,xTitle,xThumbnail,sPlaylistID,sCustomURL,bMaxThumbnailRes);
               New(nEntry);
               nEntry^.sChannelID  := S;
               nEntry^.sPlaylistID := sPlaylistID;
@@ -955,7 +958,8 @@ begin
 
                 S := jSnippet.S['publishedAt'];
                 Try
-                  // format: 2016-12-04T20:00:02.000Z
+                  // new format: 2020-05-13T21:46:00Z
+                  // old format: 2016-12-04T20:00:02.000Z
                   ytvEntry^.ytvPublished := EncodeDateTime(
                       StrToInt(Copy(S, 1,4)),  // Year
                       StrToInt(Copy(S, 6,2)),  // Month
@@ -963,7 +967,7 @@ begin
                       StrToInt(Copy(S,12,2)),  // Hour
                       StrToInt(Copy(S,15,2)),  // Minute
                       StrToInt(Copy(S,18,2)),  // Second
-                      StrToInt(Copy(S,21,3))); // MS
+                      {StrToInt(Copy(S,21,3))}0); // MS
                 Except
                   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Published Exception on : '+S);{$ENDIF}
                   ytvEntry^.ytvPublished := 0;;
