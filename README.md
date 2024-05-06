@@ -14,6 +14,5 @@ This Zoom Player plugin uses the YouTube data API to:<br>
 YOUTUBE_PLUGIN_DEFINES.INC includes the compiler directives to switch between the multiple Plugin modes (Channel/Search/Trending/Playlist/etc...)
 </font>
 <br><br>
-<br>
-A guide to creating a personal YouTube API key:
+A guide to creating a personal YouTube API key:<br>
 https://www.inmatrix.com/blog/a_guide_to_creating_a_personal_youtube_api_key.shtml
