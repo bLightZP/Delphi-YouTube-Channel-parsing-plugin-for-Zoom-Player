@@ -21,6 +21,9 @@ type
     APIKeyEdit: TEdit;
     LabelYouTubeTerms: TLabel;
     LabelGooglePrivacyPolicy: TLabel;
+    FilterDurationCB: TCheckBox;
+    FilterDurationEdit: TEdit;
+    PlaylistChannelTNCB: TCheckBox;
     procedure FormKeyPress(Sender: TObject; var Key: Char);
     procedure edtMinMediaNameLengthForScrapingByNameKeyPress(
       Sender: TObject; var Key: Char);
