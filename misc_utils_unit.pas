@@ -26,6 +26,13 @@ const
   // You must obtain your own key, it's free
   URLIdentifier     : String = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 
+  typeMedia         = 0;
+  typeFolder        = 1;
+  typeAppend        = 2;
+  typeRefresh       = 3;
+  typeLiveStream    = 100;
+  typePendingStream = 101;
+
 type
   Fixed_IShellLinkW = interface(IUnknown) { sl }
     [SID_IShellLinkW]
@@ -119,6 +126,8 @@ function  HashWideString(S : WideString) : Integer;
 
 function  WinExecAndWait32(FileName : WideString; Visibility : integer; waitforexec,console : boolean) : Integer;
 procedure GetShortCutFileName(FileName : WideString; var NewFileName,NewParameters : Widestring);
+
+function  EntryTypeToString(eType : Integer) : String;
 
 implementation
 
@@ -1682,6 +1691,20 @@ begin
   Result := Value;
   for CharIndex := 1 to Length(Value) do
     Result[CharIndex] := chr(not(ord(Value[CharIndex])));
+end;
+
+
+function EntryTypeToString(eType : Integer) : String;
+begin
+  Result := '';
+  Case eType of
+    typeMedia         : Result := 'Media';
+    typeFolder        : Result := 'Folder';
+    typeAppend        : Result := 'Append';
+    typeRefresh       : Result := 'Refresh';
+    typeLiveStream    : Result := 'Live Stream';
+    typePendingStream : Result := 'Pending Stream';
+  End;
 end;
 
 

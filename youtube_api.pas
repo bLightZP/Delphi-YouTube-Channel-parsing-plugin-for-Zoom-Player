@@ -26,7 +26,7 @@ function  YouTube_MatchCustomURL(sChannelIDs,sCustomURL : String) : String;
 procedure YouTube_GetCategoryIDs(regionCode : String; uList : TTNTStringList);
 function  YouTube_GetBestThumbnailURL(jSnippet : ISuperObject; MaxThumbnailRes : Boolean) : String;
 function  YouTube_ISO8601toSeconds(sISO : String) : Integer;
-procedure YouTube_GetPlaylistDetails(sPlaylistID : String; var sPlaylistTitle,sChannelID,sChannelTitle,sThumbnail : String; MaxThumbnailRes : Boolean);
+function  YouTube_GetPlaylistDetails(sPlaylistID : String; var sPlaylistTitle,sChannelID,sChannelTitle,sThumbnail : String; MaxThumbnailRes : Boolean) : Boolean;
 
 
 
@@ -37,7 +37,7 @@ uses classes, WinInet, misc_utils_unit, sysutils, TNTSysUtils, dialogs, Controls
 
 
 
-procedure YouTube_GetPlaylistDetails(sPlaylistID : String; var sPlaylistTitle,sChannelID,sChannelTitle,sThumbnail : String; MaxThumbnailRes : Boolean);
+function YouTube_GetPlaylistDetails(sPlaylistID : String; var sPlaylistTitle,sChannelID,sChannelTitle,sThumbnail : String; MaxThumbnailRes : Boolean) : Boolean;
 var
   sURL     : String;
   sList    : TStringList;
@@ -53,6 +53,7 @@ begin
 
   // https://www.youtube.com/playlist?list=PLGUmeWlpEqtglo5hu43XIrnHNoF4lVfmj
 
+  Result         := false;
   sPlaylistTitle := '';
   sChannelTitle  := '';
   sThumbnail     := '';
@@ -86,6 +87,7 @@ begin
           Begin
             If jItems.AsArray.Length > 0 then
             Begin
+              Result := True;
               jEntry := jItems.AsArray.O[0];
               If jEntry <> nil then
               Begin
