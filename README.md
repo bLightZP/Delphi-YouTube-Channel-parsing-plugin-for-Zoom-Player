@@ -1,4 +1,4 @@
-# Delphi-YouTube-Channel-parsing-plugin-for-Zoom-Player
+# Delphi-YouTube-DATA-v3-API-parsing-plugin-for-Zoom-Player
 This Zoom Player plugin uses the YouTube data API to:<br>
 <ol>
 <li>Accurately convert a YouTube User Name or Custom URL (e.g. "https://www.youtube.com/@zptechnology") to a YouTube Channel ID.
