@@ -293,7 +293,7 @@ end;
 function CanRefresh : Bool; stdcall;
 begin
   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'CanRefresh (before)');{$ENDIF}
-  {$IF DEFINED(SEARCHMODE) or DEFINED(TRENDINGMODE) or DEFINED(PLAYLISTMODE)}   // YouTube Search Plugin
+  {$IF DEFINED(SEARCHMODE) or DEFINED(TRENDINGMODE)}   // YouTube Search Plugin
   Result := False;
   {$ELSE}
   Result := True;
@@ -303,11 +303,13 @@ end;
 
 
 // Called by Zoom Player to show the refresh the category (name/thumbnail).
-Function Refresh(CategoryData : PCategoryPluginRecord) : Integer; stdcall; 
+Function Refresh(CategoryData : PCategoryPluginRecord) : Integer; stdcall;
 var
   sCatInput   : String;
   sTitle      : String;
+  sTitlePL    : String;
   sPlaylistID : String;
+  sChannelID  : String;
   sThumbnail  : String;
   sCustomURL  : String;
   I           : Integer;
@@ -335,6 +337,26 @@ begin
   Begin
     {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Categoty Input: '+sCatInput);{$ENDIF}
 
+    {$IFDEF PLAYLISTMODE}
+    If YouTube_GetPlaylistDetails(sCatInput,sTitlePL,sChannelID,sTitle,sThumbnail,bMaxThumbnailRes) = True then
+    Begin
+      If (sTitle <> '') and (sTitlePL <> '') then
+      Begin
+        CategoryData^.CategoryTitle := PChar(sTitlePL+' ('+sTitle+')');
+        Result := S_OK;
+
+        If (bPlaylistChannelTN = True) or (sThumbnail = '') then
+        Begin
+          // Try to use the channel's bitmap
+          YouTube_GetChannelDetails(sChannelID,sTitle,sThumbnail,sPlaylistID,sCustomURL,bMaxThumbnailRes);
+        End;
+
+        If sThumbnail <> '' then
+          CategoryData^.CategoryThumb := PChar(sThumbnail) else
+          CategoryData^.CategoryThumb := PChar(UTF8Encode(GetCurrentDLLPath)+'YouTube_Playlist.jpg');
+      End;
+    End;
+    {$ELSE}
     // Remove playlist ID
     I := Pos(',',sCatInput);
     If I > 0 then sCatInput := Copy(sCatInput,1,I-1);
@@ -353,6 +375,7 @@ begin
       If sThumbnail <> '' then CategoryData^.CategoryThumb := PChar(sThumbnail);
       Result := S_OK;
     End;
+    {$ENDIF}
   End
   {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'No Channel ID specified!'){$ENDIF};
 
@@ -720,12 +743,13 @@ var
 
   function YTVrecordToString(Entry : PYouTubeVideoRecord) : WideString;
   var
-    sPath       : String;
-    sDuration   : String;
-    sDate       : WideString;
-    sTitle      : WideString;
-    sMetaLikes  : String;
-    iMetaRating : Integer;
+    sPath        : String;
+    sDuration    : String;
+    sDate        : WideString;
+    sTitle       : WideString;
+    sDescription : WideString;
+    sMetaLikes   : String;
+    iMetaRating  : Integer;
   Begin
     Case Entry^.ytvType of
       typeMedia,
@@ -743,9 +767,12 @@ var
 
     //If Entry^.ytvChannelName <> '' then sMetaLikes := Entry^.ytvChannelName+'\n\n'+sMetaLikes;
 
-    sDuration := EncodeDuration(Entry^.ytvDuration);
-    sTitle    := Entry^.ytvTitle;
+    sDuration    := EncodeDuration(Entry^.ytvDuration);
+    sTitle       := DecodeTextTags(Entry^.ytvTitle,True);
+    sDescription := DecodeTextTags(Entry^.ytvDescription,True);
     //If Entry^.ytvChannelName <> '' then sTitle := sTitle+'  @'+Entry^.ytvChannelName;
+
+    {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Title "'+sTitle+'"');{$ENDIF}
 
     // Generate a rating value based on ratio between likes and dislikes
     iMetaRating := 0;
@@ -762,8 +789,8 @@ var
 
     Result := '"Type='        +IntToStr(Entry^.ytvType)+'",'+
               '"Path='        +sPath+'",'+
-              '"Title='       +EncodeTextTags(Entry^.ytvTitle,True)+'",'+
-              '"Description=' +EncodeTextTags(Entry^.ytvDescription,True)+'",'+
+              '"Title='       +EncodeTextTags(sTitle,True)+'",'+
+              '"Description=' +EncodeTextTags(sDescription,True)+'",'+
               '"Thumbnail='   +Entry^.ytvThumbnail+'",'+
               '"Duration='    +FloatToStr(Entry^.ytvDuration)+'",'+
               // user login not implemented, no way to pass the last play position
@@ -773,9 +800,10 @@ var
               '"MetaEntry2='  +sDate+'",'+
               '"MetaEntry3='  +sDuration+'",'+
               '"MetaEntry4='  +Entry^.ytvChannelName+'",'+
-              '"MetaEntry5='  +EncodeTextTags(Entry^.ytvDescription,True)+'",'+
+              '"MetaEntry5='  +EncodeTextTags(sDescription,True)+'",'+
               '"MetaEntry6='  +sMetaLikes+'",'+
               '"MetaRating='  +IntToStr(iMetaRating)+'"';
+    {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Data "'+Result+'"');{$ENDIF}
   End;
 
 
@@ -1232,9 +1260,8 @@ begin
                       sEndTime      := jSnippet.S['actualEndTime'];
                       sScheduleTime := jSnippet.S['scheduledStartTime'];
 
-                      {ShowMessage('Start   "'+sStartTime+'"'+CRLF+
-                                  'End     "'+sEndTime+'"'+CRLF+
-                                  'Schdule "'+sScheduleTime+'"');}
+                      {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Start "'+sStartTime+'", End "'+sEndTime+'", Schedule "'+sScheduleTime+'"');{$ENDIF}
+
                       If sEndTime = '' then
                       Begin
                         // No end time specfied, entry is either scheduled or currently live
@@ -1285,6 +1312,16 @@ begin
     Dispose(PYouTubeVideoRecord(ytvList[I]));
     ytvList.Delete(I);
   End;
+
+
+  // Filter Zero duration entries that are not Live or Scheduled
+  For I := ytvList.Count-1 downto 0 do
+    If (PYouTubeVideoRecord(ytvList[I])^.ytvType <> typePendingStream) and (PYouTubeVideoRecord(ytvList[I])^.ytvType <> typeLiveStream) and (PYouTubeVideoRecord(ytvList[I])^.ytvDuration = 0) then
+  Begin
+    Dispose(PYouTubeVideoRecord(ytvList[I]));
+    ytvList.Delete(I);
+  End;
+
 
   {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Using "'+IntToStr(ytvList.Count)+'" videos');{$ENDIF}
 

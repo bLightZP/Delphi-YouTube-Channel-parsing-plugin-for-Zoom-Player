@@ -494,7 +494,6 @@ begin
                 {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON snippet object returned nil'){$ENDIF};
 
                 // Get upload playlist ID - problematic, doesn't return videos by publish date
-                //{$IFDEF USEUPLOADPLAYLIST}
                 jSnippet := jEntry.O['contentDetails'];
                 If jSnippet <> nil then
                 Begin
@@ -511,7 +510,6 @@ begin
                   jSnippet := nil;
                 End
                 {$IFDEF LOCALTRACE}Else DebugMsgFT(LogInit,'JSON object returned nil for "contentDetails"'){$ENDIF};
-                //{$ENDIF}
 
                 jEntry.Clear(True);
                 jEntry := nil;
