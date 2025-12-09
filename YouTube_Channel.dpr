@@ -61,10 +61,14 @@ Type
     CategoryTitle : PChar;
     CategoryThumb : PChar;
     DataPath      : PChar;
+    RegPath       : PChar;
+    ConfigPath    : PChar;
     Scrapers      : PChar;
+    CategoryType  : Integer;
     TextLines     : Integer;
     DefaultFlags  : Integer;
     SortMode      : Integer;
+    MemCacheHours : Integer;
   End;
   PCategoryPluginRecord = ^TCategoryPluginRecord;
 
@@ -100,26 +104,29 @@ Type
 
 Const
   // Category flags
-  catFlagThumbView           : Integer =      1;     // Enable thumb view (disabled = list view)
-  catFlagThumbCrop           : Integer =      2;     // Crop media thumbnails to fit in display area (otherwise pad thumbnails)
-  catFlagVideoFramesAsThumb  : Integer =      4;     // Grab thumbnails from video frame
-  catFlagDarkenThumbBG       : Integer =      8;     // [Darken thumbnail area background], depreciated by "OPNavThumbDarkBG".
-  catFlagJukeBox             : Integer =     16;     // Jukebox mode enabled
-  catFlagBGFolderIcon        : Integer =     32;     // Draw folder icon if the folder has a thumbnail
-  catFlagScrapeParentFolder  : Integer =     64;     // Scrape the parent folder if no meta-data was found for the media file
-  catFlagScrapeMediaInFolder : Integer =    128;     // Create folder thumbnails from first media file within the folder (if scraping is disabled or fails)
-  catFlagTitleFromMetaData   : Integer =    256;     // Use meta-data title for the thumb's text instead of the file name
-  catFlagNoScraping          : Integer =    512;     // Disable all scraping operations for this folder
-  catFlagRescrapeModified    : Integer =   1024;     // Rescrape folders if their "modified" date changes
-  catFlagTVJukeBoxNoScrape   : Integer =   2048;     // Switched to TV JukeBox list view without having the parent folder scraped first
-  catFlag1stMediaFolderThumb : Integer =   4096;     // Instead of scraping for a folder's name, always use the first media file within the folder instead
-  catFlagCropCatThumbnail    : Integer =   8192;     // Crop category thumbnails to fit in display area (otherwise pad thumbnails)
-  catFlagScrapeDebugMsgs     : Integer =  16384;     // Show scraper debug messages in meta-data overview
-  catFlagScrapeMediaTitle    : Integer =  32768;     // Scrape using media title instead of file name
-  catFlagNoDurationOverlay   : Integer =  65536;     // Don't draw the duration/position thumbnail overlay
-  catFlagNoFormatOverlay     : Integer = 131072;     // Don't draw the media format thumbnail overlay
-  catFlagNoReturnResults     : Integer = 262144;     // Don't expect any result entries from the plugin
-
+  catFlagThumbView           : Integer =       1;     // Enable thumb view (disabled = list view)
+  catFlagThumbCrop           : Integer =       2;     // Crop media thumbnails to fit in display area (otherwise pad thumbnails)
+  catFlagVideoFramesAsThumb  : Integer =       4;     // Grab thumbnails from video frame
+  catFlagDarkenThumbBG       : Integer =       8;     // [Darken thumbnail area background], depreciated by "OPNavThumbDarkBG".
+  catFlagJukeBox             : Integer =      16;     // Jukebox mode enabled
+  catFlagBGFolderIcon        : Integer =      32;     // Draw folder icon if the folder has a thumbnail
+  catFlagScrapeParentFolder  : Integer =      64;     // Scrape the parent folder if no meta-data was found for the media file
+  catFlagScrapeMediaInFolder : Integer =     128;     // Create folder thumbnails from first media file within the folder (if scraping is disabled or fails)
+  catFlagTitleFromMetaData   : Integer =     256;     // Use meta-data title for the thumb's text instead of the file name
+  catFlagNoScraping          : Integer =     512;     // Disable all scraping operations for this folder
+  catFlagRescrapeModified    : Integer =    1024;     // Rescrape folders if their "modified" date changes
+  catFlagTVJukeBoxNoScrape   : Integer =    2048;     // Switched to TV JukeBox list view without having the parent folder scraped first
+  catFlag1stMediaFolderThumb : Integer =    4096;     // Instead of scraping for a folder's name, always use the first media file within the folder instead
+  catFlagCropCatThumbnail    : Integer =    8192;     // Crop category thumbnails to fit in display area (otherwise pad thumbnails)
+  catFlagScrapeDebugMsgs     : Integer =   16384;     // Show scraper debug messages in meta-data overview
+  catFlagScrapeMediaTitle    : Integer =   32768;     // Scrape using media title instead of file name
+  catFlagNoDurationOverlay   : Integer =   65536;     // Don't draw the duration/position thumbnail overlay
+  catFlagNoFormatOverlay     : Integer =  131072;     // Don't draw the media format thumbnail overlay
+  catFlagNoReturnResults     : Integer =  262144;     // Don't expect any result entries from the plugin
+  catFlagSkipScrapedImage    : Integer =  524288;     // Don't use scraped images for the thumbnail (extract from video if possible)
+  catFlagSkipMediaInfo       : Integer = 1048576;     // Don't use media info for scraping information
+  catFlagNoProgressiveCache  : Integer = 2097152;     // Don't use progressive caching (e.g. YouTube's "Add More")
+  
   srName                               = 0;
   srExt                                = 1;
   srDate                               = 2;
@@ -543,6 +550,16 @@ begin
 
         If sCatInput <> '' then
         Begin
+          // Remove junk data we're not interested in
+          sPos := Pos('?',sCatInput);
+          If sPos > 0 then
+          Begin
+            {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Cleaning up URL "'+sCatInput+'"');{$ENDIF}
+            sCatInput   := Copy(sCatInput,1,sPos-1);
+            sCatInputLC := Lowercase(sCatInput);
+            {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Cleaning result "'+sCatInput+'"');{$ENDIF}
+          End;
+
           // Try to find the Channel ID by input URL
           iOfs := 10;
           sPos := Pos('/channel/',sCatInputLC);
@@ -647,7 +664,15 @@ begin
 end;
 
 
-Function GetList(CategoryID, CategoryPath, DataPath : PChar; ItemList : PCategoryItemList) : Integer; stdcall;
+function GetItemPath(CategoryID, CategoryPath, DataPath, RegPath, ConfigPath : PChar) : PChar; stdcall;
+begin
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'GetItemPath (before)');{$ENDIF}
+  Result := '';
+  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'GetItemPath (after)');{$ENDIF}
+end;
+
+
+Function GetList(CategoryType : Integer; CategoryID, CategoryPath, DataPath, RegPath, ConfigPath : PChar; ItemList : PCategoryItemList; listingFlags : Integer) : Integer; stdcall;
 type
   TYouTubeVideoRecord =
   Record
@@ -774,7 +799,7 @@ var
 
     {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'Title "'+sTitle+'"');{$ENDIF}
 
-    // Generate a rating value based on ratio between likes and dislikes
+    // Generate a rating value based on ratio between likes and dislikes - YouTube disabled dislikes, making this impossible.
     iMetaRating := 0;
     {If Entry^.ytvLikeCount+Entry^.ytvDislikeCount > 0 then
       iMetaRating := Round((100*Entry^.ytvLikeCount)/(Entry^.ytvLikeCount+Entry^.ytvDislikeCount));}
@@ -808,6 +833,23 @@ var
 
 
 begin
+  // CategoryID   = A unique category identifier, in our case, a YouTube channel's "Channel ID".
+  // CategoryPath = Used to the pass a path or parameter, in our case, a YouTube channel's next page Token.
+  // DataPath     = A unique path for the plugin to save any files (e.g. cache).
+  // RegPath      = Zoom Player's settings path in the Windows registry (always under HKEY_CURRENT_USER).
+  // ConfigPath   = Zoom Player's configuration path where all profile files and cached data is saved.
+  // ItemList     = Return a list of items and meta-data
+
+  {$IFDEF LOCALTRACE}
+  DebugMsgFT(LogInit,'GetList (before)'+CRLF+
+    'CategoryID   : '+CategoryID+CRLF+
+    'CategoryPath : '+CategoryPath+CRLF+
+    'DataPath     : '+DataPath+CRLF+
+    'RegPath      : '+RegPath+CRLF+
+    'ConfigPath   : '+ConfigPath
+    );
+  {$ENDIF}
+
   // **** Getting upload playlist:
   // https://www.googleapis.com/youtube/v3/channels?key=[apikey]&part=contentDetails&id=[ChannelID]
   //
@@ -815,17 +857,7 @@ begin
   // https://www.googleapis.com/youtube/v3/playlistitems?key=[apikey]&part=snippet,id&playlistId=[playlistId]&maxResults='+IntToStr(YouTube_VideoFetch)
   // e.g. : https://www.googleapis.com/youtube/v3/playlistItems?key=AIzaSyBieQxSpir6Y2-iYPokdu90UxqM_skzZFo&part=snippet,id&playlistId=UUEK3tT7DcfWGWJpNEDBdWog&maxResults=25
 
-  // CategoryID   = A unique category identifier, in our case, a YouTube channel's "Channel ID".
-  // CategoryPath = Used to the pass a path or parameter, in our case, a YouTube channel's next page Token.
-  // ItemList     = Return a list of items and meta-data
-
-  // ItemType :
-  // 0 = Playable item
-  // 1 = Enter Folder, retrieve new list with additional 'categorypath'.
-  // 2 = Append items to list, removing this entry
-
-  {$IFDEF LOCALTRACE}DebugMsgFT(LogInit,'GetList (before)');{$ENDIF}
-  Result             := E_FAIL;
+  Result      := E_FAIL;
 
   sList       := TStringList.Create;
   ytvList     := TList.Create;
@@ -929,7 +961,7 @@ begin
     {$ENDIF}
   {$ENDIF}
   sToken  := CategoryPath;
-  If sToken <> '' then sURL := sURL+'&pageToken='+sToken;
+  If (sToken <> '') and (sToken <> 'refresh') then sURL := sURL+'&pageToken='+sToken;
   sToken  := '';
 
   dlStatus := strUnknown;
@@ -1467,11 +1499,12 @@ end;
 
 function RequireInput : Bool; stdcall;
 begin
-  {$IFDEF PLAYLISTMODE}
+  (*{$IFDEF PLAYLISTMODE}
     Result := True;
   {$ELSE}
     Result := False;
-  {$ENDIF}
+  {$ENDIF}*)
+  Result := True;
 end;
 
 
@@ -1495,6 +1528,7 @@ exports
    Refresh,
    CanConfigure,
    Configure,
+   GetItemPath,
    GetList,
    CreateCategory,
    DeleteCategory,

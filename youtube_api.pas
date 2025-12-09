@@ -232,7 +232,15 @@ begin
     Begin
       // Try to match CustomURL field
       Result := YouTube_MatchCustomURL(sID,sChannelName);
-      If Result = '' then Result := idList[0];
+      If Result = '' then
+      Begin
+        // Try to match channel name without the "@".
+        Result := YouTube_ConvertChannelNameToChannelID(Copy(sChannelName,2,Length(sChannelName)-1));
+
+        // Probably doesn't work, return first channel found
+        If Result = '' then
+          Result := idList[0];
+      End;
     End
     Else Result := idList[0];
   End
